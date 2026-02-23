@@ -182,7 +182,7 @@ export default function Login() {
 
             <CardContent>
               <form onSubmit={handleSubmit(onLogin)} className="space-y-6">
-                {/* Phone Number */}
+
                 <div className="space-y-3">
                   <Label
                     htmlFor="retailer_id"
@@ -192,7 +192,7 @@ export default function Login() {
                   </Label>
                   <Input
                     id="retailer_id"
-                    type="tel"
+                    type="text"
                     placeholder="Enter your retailer ID"
                     {...register("retailer_id")}
                     className="h-14 bg-slate-50 border border-slate-300 rounded-xl focus:border-[#0d3154] focus:ring-[#0d3154]/50 text-lg"

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import {
@@ -88,7 +88,16 @@ export function AddBeneficiaryDialog({
         );
 
         if (response.data.status === "success" && response.data.data?.banks) {
-          setBanks(response.data.data.banks);
+          // Deduplicate banks by bank_name to avoid React key conflicts and duplicate entries
+          const rawBanks: Bank[] = response.data.data.banks;
+          const seen = new Set<string>();
+          const uniqueBanks = rawBanks.filter((bank) => {
+            const key = bank.bank_name.trim().toLowerCase();
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+          });
+          setBanks(uniqueBanks);
         }
       } catch (error: any) {
         toast({
@@ -120,21 +129,36 @@ export function AddBeneficiaryDialog({
       setBankSearchTerm("");
       setIsVerified(false);
       setShowVerifyConfirm(false);
+      setIsSelectOpen(false);
     }
   }, [open]);
 
-  const filteredBanks = banks.filter((bank) =>
-    bank.bank_name.toLowerCase().includes(bankSearchTerm.toLowerCase())
-  );
+  // Auto-focus search input when dropdown opens
+  useEffect(() => {
+    if (isSelectOpen) {
+      const timer = setTimeout(() => {
+        searchInputRef.current?.focus();
+      }, 50);
+      return () => clearTimeout(timer);
+    }
+  }, [isSelectOpen]);
 
-  // Verify Account Handler - CORRECTED
+  // useMemo ensures re-computation on every bankSearchTerm or banks change
+  const filteredBanks = useMemo(() => {
+    const term = bankSearchTerm.toLowerCase().trim();
+    if (!term) return banks;
+    return banks.filter((bank) =>
+      bank.bank_name.toLowerCase().trim().includes(term)
+    );
+  }, [banks, bankSearchTerm]);
+
+  // Verify Account Handler
   const handleVerifyAccount = async () => {
-    // Validation
     if (!formData.accountNumber) {
       setErrors({ ...errors, accountNumber: "Account number is required" });
       return;
     }
-    
+
     if (!formData.ifsc) {
       setErrors({ ...errors, ifsc: "IFSC code is required" });
       return;
@@ -155,11 +179,10 @@ export function AddBeneficiaryDialog({
     }
 
     setIsVerifying(true);
-    setShowVerifyConfirm(false); // Close confirmation modal
+    setShowVerifyConfirm(false);
     const token = localStorage.getItem("authToken");
 
     try {
-      // Get retailer_id from token
       const decoded = jwtDecode<DecodedToken>(token || "");
       const retailerId = decoded.user_id;
 
@@ -167,17 +190,12 @@ export function AddBeneficiaryDialog({
         throw new Error("Retailer ID not found. Please login again.");
       }
 
-      // ✅ CORRECTED: Match backend VerifyBeneficiaryRequestModel
       const payload = {
         retailer_id: retailerId,
         mobile_number: mobileNumber,
         account_number: formData.accountNumber,
         ifsc_code: formData.ifsc,
       };
-
-      console.log("=== Verify Beneficiary Payload ===");
-      console.log("Payload:", payload);
-      console.log("==================================");
 
       const response = await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/bene/verify/beneficiaries`,
@@ -190,19 +208,12 @@ export function AddBeneficiaryDialog({
         }
       );
 
-      console.log("=== Verify Beneficiary Response ===");
-      console.log("Response:", response.data);
-      console.log("===================================");
-
-      // Check if verification was successful
       if (response.data?.status === "success") {
-        // Extract the nested data: response.data.response.data
         const verifyResponse = response.data?.data?.response;
         const verificationData = verifyResponse?.data;
 
         if (verificationData && verificationData.c_name) {
-          // Auto-fill the form with verified data
-          setFormData(prev => ({
+          setFormData((prev) => ({
             ...prev,
             beneficiaryName: verificationData.c_name || "",
             bank: verificationData.bank_name || prev.bank,
@@ -216,29 +227,27 @@ export function AddBeneficiaryDialog({
             description: `Account verified for ${verificationData.c_name}`,
           });
         } else {
-          // Verification succeeded but no data returned
           setIsVerified(true);
           toast({
             title: "Verified",
-            description: "Account details verified. Please enter beneficiary name manually.",
+            description:
+              "Account details verified. Please enter beneficiary name manually.",
           });
         }
       } else {
-        // Verification failed
         toast({
           title: "Verification Failed",
-          description: response.data?.message || "Unable to verify account. Please enter details manually.",
+          description:
+            response.data?.message ||
+            "Unable to verify account. Please enter details manually.",
           variant: "destructive",
         });
       }
     } catch (error: any) {
-      console.error("=== Verify Beneficiary Error ===");
-      console.error("Error:", error.response?.data);
-      console.error("================================");
-      
       toast({
         title: "Verification Error",
-        description: error.response?.data?.message || "Failed to verify account",
+        description:
+          error.response?.data?.message || "Failed to verify account",
         variant: "destructive",
       });
     } finally {
@@ -262,8 +271,6 @@ export function AddBeneficiaryDialog({
     } else if (formData.accountNumber.length < 9) {
       newErrors.accountNumber = "Account number must be at least 9 digits";
     }
-
-    // ✅ Verification is now OPTIONAL - removed mandatory check
 
     if (!formData.beneficiaryName) {
       newErrors.beneficiaryName = "Beneficiary name is required";
@@ -290,7 +297,7 @@ export function AddBeneficiaryDialog({
     try {
       setIsSubmitting(true);
       const token = localStorage.getItem("authToken");
-      
+
       const payload = {
         mobile_number: mobileNumber,
         bank_name: formData.bank,
@@ -298,10 +305,6 @@ export function AddBeneficiaryDialog({
         account_number: formData.accountNumber,
         ifsc_code: formData.ifsc,
       };
-
-      console.log("=== Add Beneficiary Payload ===");
-      console.log("Payload:", payload);
-      console.log("===============================");
 
       const response = await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/bene/add/beneficiary`,
@@ -313,10 +316,6 @@ export function AddBeneficiaryDialog({
           },
         }
       );
-
-      console.log("=== Add Beneficiary Response ===");
-      console.log("Response:", response.data);
-      console.log("================================");
 
       if (response.data.status === "success") {
         toast({
@@ -342,13 +341,10 @@ export function AddBeneficiaryDialog({
         onOpenChange(false);
       }
     } catch (error: any) {
-      console.error("=== Add Beneficiary Error ===");
-      console.error("Error:", error.response?.data);
-      console.error("=============================");
-      
       toast({
         title: "Error",
-        description: error.response?.data?.message || "Failed to add beneficiary",
+        description:
+          error.response?.data?.message || "Failed to add beneficiary",
         variant: "destructive",
       });
     } finally {
@@ -367,6 +363,7 @@ export function AddBeneficiaryDialog({
     setErrors({});
     setBankSearchTerm("");
     setIsVerified(false);
+    setIsSelectOpen(false);
     onOpenChange(false);
   };
 
@@ -376,26 +373,29 @@ export function AddBeneficiaryDialog({
       setFormData({
         ...formData,
         bank: bankName,
-        ifsc: selectedBank.ifsc_code, // Auto-fill IFSC but remains editable
+        ifsc: selectedBank.ifsc_code,
       });
-      setIsVerified(false); // Reset verification when bank changes
+      setErrors((prev) => ({ ...prev, bank: "" }));
+      setIsVerified(false);
     }
   };
 
   const handleIFSCChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let value = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "");
-    
+
     if (value.length > 11) {
       value = value.substring(0, 11);
     }
-    
+
     setFormData({ ...formData, ifsc: value });
-    setIsVerified(false); // Reset verification when IFSC changes
+    setIsVerified(false);
   };
 
-  const handleAccountNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleAccountNumberChange = (
+    e: React.ChangeEvent<HTMLInputElement>
+  ) => {
     setFormData({ ...formData, accountNumber: e.target.value });
-    setIsVerified(false); // Reset verification when account number changes
+    setIsVerified(false);
   };
 
   return (
@@ -421,55 +421,99 @@ export function AddBeneficiaryDialog({
                 type="button"
                 variant="outline"
                 className="w-full justify-between text-left font-normal"
-                onClick={() => setIsSelectOpen(!isSelectOpen)}
+                onClick={() => setIsSelectOpen((prev) => !prev)}
               >
                 <span className={formData.bank ? "" : "text-muted-foreground"}>
                   {formData.bank || "--Select Bank--"}
                 </span>
-                <ChevronDown className="h-4 w-4 opacity-50" />
+                <ChevronDown
+                  className={`h-4 w-4 opacity-50 transition-transform duration-200 ${
+                    isSelectOpen ? "rotate-180" : ""
+                  }`}
+                />
               </Button>
-              
+
               {isSelectOpen && (
                 <>
+                  {/* Invisible overlay to close dropdown on outside click */}
                   <div
-                    className="fixed inset-0 z-40 bg-black/20"
-                    onClick={() => setIsSelectOpen(false)}
+                    className="fixed inset-0 z-40"
+                    onClick={() => {
+                      setIsSelectOpen(false);
+                      setBankSearchTerm("");
+                    }}
                   />
-                  
-                  <div className="absolute top-full left-0 right-0 mt-2 bg-background border border-border rounded-lg shadow-lg z-50 max-h-[300px] flex flex-col">
-                    <div className="p-2 border-b border-border sticky top-0 bg-background">
-                      <Input
+
+                  <div
+                    className="absolute top-full left-0 right-0 mt-2 bg-background border border-border rounded-lg shadow-lg z-50 max-h-[300px] flex flex-col"
+                    onKeyDown={(e) => e.stopPropagation()}
+                    onKeyUp={(e) => e.stopPropagation()}
+                    onKeyDownCapture={(e) => e.stopPropagation()}
+                  >
+                    {/* Search Input - using native input to bypass Dialog event capture */}
+                    <div className="p-2 border-b border-border bg-background rounded-t-lg">
+                      <input
                         ref={searchInputRef}
                         placeholder="Search bank..."
-                        className="h-9"
                         type="text"
                         autoComplete="off"
                         autoCorrect="off"
                         autoCapitalize="off"
-                        spellCheck="false"
-                        style={{ fontSize: '16px' }}
+                        spellCheck={false}
                         value={bankSearchTerm}
-                        onChange={(e) => setBankSearchTerm(e.target.value)}
+                        style={{
+                          fontSize: "16px",
+                          width: "100%",
+                          height: "36px",
+                          padding: "0 12px",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: "6px",
+                          background: "hsl(var(--background))",
+                          color: "hsl(var(--foreground))",
+                          outline: "none",
+                          boxSizing: "border-box",
+                        }}
+                        onChange={(e) => {
+                          setBankSearchTerm(e.target.value);
+                        }}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') {
+                          e.stopPropagation();
+                          if (e.key === "Escape") {
+                            setIsSelectOpen(false);
+                            setBankSearchTerm("");
+                          }
+                          if (e.key === "Enter") {
                             e.preventDefault();
+                            if (filteredBanks.length > 0) {
+                              handleBankChange(filteredBanks[0].bank_name);
+                              setIsSelectOpen(false);
+                              setBankSearchTerm("");
+                            }
                           }
                         }}
-                        autoFocus
+                        onKeyUp={(e) => e.stopPropagation()}
+                        onClick={(e) => e.stopPropagation()}
+                        onFocus={(e) => e.stopPropagation()}
                       />
                     </div>
-                    
+
+                    {/* Bank List */}
                     <div className="overflow-y-auto max-h-[250px]">
                       {loading ? (
-                        <div className="p-4 text-center text-sm text-muted-foreground">
+                        <div className="p-4 text-center text-sm text-muted-foreground flex items-center justify-center gap-2">
+                          <Loader2 className="h-4 w-4 animate-spin" />
                           Loading banks...
                         </div>
                       ) : filteredBanks.length > 0 ? (
-                        filteredBanks.map((bank) => (
+                        filteredBanks.map((bank, index) => (
                           <button
-                            key={bank.bank_name}
+                            key={`${bank.bank_name}-${index}`}
                             type="button"
-                            className="w-full text-left px-4 py-3 hover:bg-muted transition-colors text-sm border-b border-border last:border-b-0"
+                            className={`w-full text-left px-4 py-3 hover:bg-muted transition-colors text-sm border-b border-border last:border-b-0 ${
+                              formData.bank === bank.bank_name
+                                ? "bg-muted font-medium"
+                                : ""
+                            }`}
                             onClick={() => {
                               handleBankChange(bank.bank_name);
                               setIsSelectOpen(false);
@@ -481,7 +525,9 @@ export function AddBeneficiaryDialog({
                         ))
                       ) : (
                         <div className="p-4 text-center text-sm text-muted-foreground">
-                          {bankSearchTerm ? "No banks match your search" : "No banks found"}
+                          {bankSearchTerm
+                            ? `No banks found for "${bankSearchTerm}"`
+                            : "No banks available"}
                         </div>
                       )}
                     </div>
@@ -494,7 +540,7 @@ export function AddBeneficiaryDialog({
             )}
           </div>
 
-          {/* IFSC - Editable but auto-filled */}
+          {/* IFSC */}
           <div className="space-y-2">
             <Label htmlFor="ifsc" className="text-sm font-medium">
               IFSC Code <span className="text-destructive">*</span>
@@ -531,11 +577,11 @@ export function AddBeneficiaryDialog({
               <Button
                 type="button"
                 onClick={() => {
-                  // Validate before showing confirmation
                   if (!formData.accountNumber || !formData.ifsc) {
                     toast({
                       title: "Missing Information",
-                      description: "Please enter account number and IFSC code first",
+                      description:
+                        "Please enter account number and IFSC code first",
                       variant: "destructive",
                     });
                     return;
@@ -550,7 +596,9 @@ export function AddBeneficiaryDialog({
                   }
                   setShowVerifyConfirm(true);
                 }}
-                disabled={isVerifying || !formData.accountNumber || !formData.ifsc}
+                disabled={
+                  isVerifying || !formData.accountNumber || !formData.ifsc
+                }
                 variant={isVerified ? "default" : "outline"}
                 className={isVerified ? "bg-green-600 hover:bg-green-700" : ""}
               >
@@ -571,11 +619,13 @@ export function AddBeneficiaryDialog({
             )}
           </div>
 
-          {/* Beneficiary Name - Auto-filled from verification OR manual entry */}
+          {/* Beneficiary Name */}
           <div className="space-y-2">
             <Label htmlFor="beneficiaryName" className="text-sm font-medium">
               Beneficiary Name <span className="text-destructive">*</span>
-              {isVerified && <span className="text-xs text-green-600 ml-2">(Verified)</span>}
+              {isVerified && (
+                <span className="text-xs text-green-600 ml-2">(Verified)</span>
+              )}
             </Label>
             <Input
               id="beneficiaryName"
@@ -584,7 +634,11 @@ export function AddBeneficiaryDialog({
               onChange={(e) =>
                 setFormData({ ...formData, beneficiaryName: e.target.value })
               }
-              placeholder={isVerified ? "Auto-filled from verification (editable)" : "Enter beneficiary name"}
+              placeholder={
+                isVerified
+                  ? "Auto-filled from verification (editable)"
+                  : "Enter beneficiary name"
+              }
               className={isVerified ? "bg-green-50 border-green-300" : ""}
             />
             {errors.beneficiaryName && (
@@ -596,23 +650,6 @@ export function AddBeneficiaryDialog({
               </p>
             )}
           </div>
-
-          {/* <div className="space-y-2">
-            <Label htmlFor="branchName" className="text-sm font-medium">
-              Branch Name {isVerified && <span className="text-xs text-muted-foreground">(Auto-filled)</span>}
-            </Label>
-            <Input
-              id="branchName"
-              type="text"
-              value={formData.branchName}
-              onChange={(e) =>
-                setFormData({ ...formData, branchName: e.target.value })
-              }
-              className={isVerified ? "bg-green-50 border-green-300" : ""}
-              placeholder={isVerified ? "Auto-filled from verification" : "Enter branch name (optional)"}
-              readOnly={isVerified}
-            />
-          </div> */}
 
           {/* Action Buttons */}
           <div className="flex flex-col sm:flex-row gap-3 pt-4">
@@ -650,14 +687,22 @@ export function AddBeneficiaryDialog({
             <AlertDialogTitle>Confirm Account Verification</AlertDialogTitle>
             <AlertDialogDescription className="space-y-3">
               <p className="text-base">
-                Account verification will cost <span className="font-bold text-red-600">₹3.00</span> and will be deducted from your wallet balance.
+                Account verification will cost{" "}
+                <span className="font-bold text-red-600">₹3.00</span> and will
+                be deducted from your wallet balance.
               </p>
               <div className="bg-muted p-4 rounded-lg border mt-4">
-                <p className="text-sm font-semibold mb-2">Verification Details:</p>
+                <p className="text-sm font-semibold mb-2">
+                  Verification Details:
+                </p>
                 <div className="space-y-1 text-sm">
                   <p>
-                    <span className="text-muted-foreground">Account Number:</span>{" "}
-                    <span className="font-mono font-medium">{formData.accountNumber}</span>
+                    <span className="text-muted-foreground">
+                      Account Number:
+                    </span>{" "}
+                    <span className="font-mono font-medium">
+                      {formData.accountNumber}
+                    </span>
                   </p>
                   <p>
                     <span className="text-muted-foreground">IFSC Code:</span>{" "}
