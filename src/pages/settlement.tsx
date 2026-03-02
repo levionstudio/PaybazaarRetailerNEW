@@ -465,7 +465,7 @@ export default function Settlement() {
       });
       
     } catch (error: any) {
-      console.error("Payout error:", error.response?.data);
+   
       
       setVerifiedMpin("");
       
