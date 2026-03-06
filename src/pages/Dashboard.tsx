@@ -428,13 +428,13 @@ export default function Dashboard() {
       description: "Flight and bus booking",
       stats: [{ label: "Today", value: "₹0.00" }],
     },
-    {
-      title: "UPI",
-      icon: Landmark,
-      status: "active" as const,
-      description: "UPI payments",
-      stats: [{ label: "Today", value: "₹0.00" }],
-    },
+    // {
+    //   title: "UPI",
+    //   icon: Landmark,
+    //   status: "active" as const,
+    //   description: "UPI payments",
+    //   stats: [{ label: "Today", value: "₹0.00" }],
+    // },
   ];
 
   /* -------------------- BUILD TABLE ROWS -------------------- */

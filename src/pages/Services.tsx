@@ -88,17 +88,17 @@ export default function Services() {
       category: "Ticket Booking",
       route: "/services",
     },
-    {
-      id: "upi",
-      title: "UPI",
-      subtitle: "Universal Payment Interface",
-      icon: IndianRupee,
-      status: "coming-soon",
-      description: "Pay for your purchases using UPI",
-      color: "bg-gradient-to-r from-purple-600 to-purple-400",
-      category: "Upi",
-      route: "/services",
-    },
+    // {
+    //   id: "upi",
+    //   title: "UPI",
+    //   subtitle: "Universal Payment Interface",
+    //   icon: IndianRupee,
+    //   status: "coming-soon",
+    //   description: "Pay for your purchases using UPI",
+    //   color: "bg-gradient-to-r from-purple-600 to-purple-400",
+    //   category: "Upi",
+    //   route: "/services",
+    // },
   ];
 
   const categories = [

@@ -94,17 +94,17 @@ export default function ServiceReport() {
       category: "Ticket Booking",
       route: "/service",
      },
-         {
-  id: "upi",
-  title: "UPI",
-  subtitle: "Universal Payment Interface",
-  icon: IndianRupee,
-         status: "coming-soon",
-  description: "Pay for your purchases using UPI",
-  color: "bg-gradient-to-r from-purple-600 to-purple-400",
-  category: "Upi",
-  route: "/service",
-},
+//          {
+//   id: "upi",
+//   title: "UPI",
+//   subtitle: "Universal Payment Interface",
+//   icon: IndianRupee,
+//          status: "coming-soon",
+//   description: "Pay for your purchases using UPI",
+//   color: "bg-gradient-to-r from-purple-600 to-purple-400",
+//   category: "Upi",
+//   route: "/service",
+// },
   ];
 
   const categories = [

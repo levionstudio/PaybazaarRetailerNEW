@@ -157,17 +157,17 @@ export default function ServiceReportSettlement() {
         const txDate = new Date(tx.created_at);
         const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
         const end = endDate ? new Date(`${endDate}T23:59:59`) : null;
-        
+
         if (start && txDate < start) return false;
         if (end && txDate > end) return false;
-        
+
         return true;
       });
     }
 
     // 2. Status filtering (FRONTEND ONLY)
     if (statusFilter !== "ALL") {
-      filtered = filtered.filter((tx) => 
+      filtered = filtered.filter((tx) =>
         tx.transaction_status.toUpperCase() === statusFilter.toUpperCase()
       );
     }
@@ -273,7 +273,7 @@ export default function ServiceReportSettlement() {
   const handleStartDateChange = (value: string) => {
     setStartDate(value);
     setDateError("");
-    
+
     // If end date exists and new start date is after it, clear end date
     if (value && endDate) {
       const start = new Date(value);
@@ -287,7 +287,7 @@ export default function ServiceReportSettlement() {
   const handleEndDateChange = (value: string) => {
     setEndDate(value);
     setDateError("");
-    
+
     // If start date exists and new end date is before it, clear start date
     if (value && startDate) {
       const start = new Date(startDate);
@@ -318,7 +318,7 @@ export default function ServiceReportSettlement() {
     end_date?: string;
   }) => {
     const queryParams = new URLSearchParams();
-    
+
     // Always add limit and offset
     if (params.limit !== undefined) {
       queryParams.append('limit', params.limit.toString());
@@ -326,7 +326,7 @@ export default function ServiceReportSettlement() {
     if (params.offset !== undefined) {
       queryParams.append('offset', params.offset.toString());
     }
-    
+
     // Add date params with timestamps for proper filtering
     if (params.start_date && params.start_date.trim()) {
       queryParams.append('start_date', `${params.start_date.trim()}T00:00:00`);
@@ -334,7 +334,7 @@ export default function ServiceReportSettlement() {
     if (params.end_date && params.end_date.trim()) {
       queryParams.append('end_date', `${params.end_date.trim()}T23:59:59`);
     }
-    
+
     return queryParams.toString();
   };
 
@@ -363,8 +363,9 @@ export default function ServiceReportSettlement() {
       );
 
       if (response.data?.status === "success" && Array.isArray(response.data.data?.transactions)) {
+        console.log(response.data.data.transactions);
         const raw: Transaction[] = response.data.data.transactions || [];
-        
+
         const sortedTransactions = raw.sort(
           (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
@@ -434,10 +435,10 @@ export default function ServiceReportSettlement() {
   };
 
   // Check if filters are active
-  const hasActiveFilters = 
-    startDate !== getTodayDate() || 
-    endDate !== getTodayDate() || 
-    statusFilter !== "ALL" || 
+  const hasActiveFilters =
+    startDate !== getTodayDate() ||
+    endDate !== getTodayDate() ||
+    statusFilter !== "ALL" ||
     searchTerm;
 
   // Export to Excel - use filtered data
@@ -493,9 +494,8 @@ export default function ServiceReportSettlement() {
       ];
       worksheet["!cols"] = colWidths;
 
-      const fileName = `Settlement_Report_${
-        new Date().toISOString().split("T")[0]
-      }.xlsx`;
+      const fileName = `Settlement_Report_${new Date().toISOString().split("T")[0]
+        }.xlsx`;
       XLSX.writeFile(workbook, fileName);
 
       toast({
@@ -637,12 +637,38 @@ export default function ServiceReportSettlement() {
   };
 
   const handlePrintReceipt = () => {
-    if (!receiptRef.current) return;
+    if (!receiptRef.current || !selectedTransaction) return;
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const receiptHTML = receiptRef.current.outerHTML;
+    const tx = selectedTransaction;
+
+    const statusColors: Record<string, { bg: string; border: string; text: string }> = {
+      SUCCESS: { bg: "#f0fdf4", border: "#86efac", text: "#16a34a" },
+      FAILED: { bg: "#fef2f2", border: "#fca5a5", text: "#dc2626" },
+      FAILURE: { bg: "#fef2f2", border: "#fca5a5", text: "#dc2626" },
+      PENDING: { bg: "#fefce8", border: "#fde047", text: "#ca8a04" },
+    };
+    const sc = statusColors[tx.transaction_status.toUpperCase()] || { bg: "#f9fafb", border: "#d1d5db", text: "#4b5563" };
+
+    const formattedDate = (() => {
+      try {
+        return new Date(tx.created_at).toLocaleString("en-IN", {
+          year: "numeric", month: "2-digit", day: "2-digit",
+          hour: "2-digit", minute: "2-digit", second: "2-digit",
+        });
+      } catch { return tx.created_at; }
+    })();
+
+    const formattedAmount = (() => {
+      const num = typeof tx.amount === "string" ? parseFloat(tx.amount) : tx.amount;
+      return num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    })();
+
+    const transferTypeName = tx.transfer_type === "5" ? "IMPS" : tx.transfer_type === "6" ? "NEFT" : tx.transfer_type;
+    const txId = tx.operator_transaction_id || tx.payout_transaction_id;
+    const printDate = new Date().toLocaleString("en-IN");
 
     printWindow.document.open();
     printWindow.document.write(`
@@ -650,28 +676,235 @@ export default function ServiceReportSettlement() {
       <html>
         <head>
           <title>Receipt</title>
-          <script src="https://cdn.tailwindcss.com"></script>
           <style>
-            body {
+            * { box-sizing: border-box; margin: 0; padding: 0; }
+            html, body {
+              width: 100%;
+              height: 100%;
               background: white;
-              margin: 0;
-              padding: 20px;
+              font-family: 'Segoe UI', Arial, sans-serif;
+              font-size: 14px;
+              color: #111;
               -webkit-print-color-adjust: exact;
               print-color-adjust: exact;
             }
             @page {
-              size: A4;
-              margin: 15mm;
+              size: 210mm 148.5mm;
+              margin: 0;
             }
-            @media print {
-              body {
-                margin: 0;
-              }
+            .page {
+              width: 210mm;
+              height: 148.5mm;
+              padding: 7mm 12mm;
+              display: flex;
+              flex-direction: column;
+            }
+            .meta-row {
+              display: flex;
+              justify-content: space-between;
+              font-size: 10px;
+              color: #6b7280;
+              margin-bottom: 5px;
+              flex-shrink: 0;
+            }
+            .header {
+              text-align: center;
+              border-bottom: 2px solid #e5e7eb;
+              padding-bottom: 7px;
+              margin-bottom: 7px;
+              flex-shrink: 0;
+            }
+            .header h1 {
+              font-size: 20px;
+              font-weight: 800;
+              letter-spacing: 4px;
+              color: #111827;
+            }
+            .header p {
+              font-size: 11px;
+              font-weight: 700;
+              color: #374151;
+              margin-top: 2px;
+            }
+            .txn-id-box {
+              text-align: center;
+              margin-bottom: 6px;
+              flex-shrink: 0;
+            }
+            .txn-id-box .label {
+              font-size: 10px;
+              color: #6b7280;
+              margin-bottom: 2px;
+            }
+            .txn-id-box .value {
+              font-family: monospace;
+              font-size: 12px;
+              font-weight: 600;
+              color: #111;
+            }
+            .status-box {
+              text-align: center;
+              padding: 8px;
+              border-radius: 8px;
+              border: 2px solid ${sc.border};
+              background-color: ${sc.bg};
+              color: ${sc.text};
+              font-size: 15px;
+              font-weight: 800;
+              letter-spacing: 2px;
+              margin-bottom: 8px;
+              flex-shrink: 0;
+            }
+            .details-section {
+              flex: 1;
+              display: flex;
+              flex-direction: column;
+              min-height: 0;
+            }
+            .section-title {
+              font-size: 11px;
+              font-weight: 700;
+              color: #111;
+              padding-bottom: 4px;
+              border-bottom: 1px solid #e5e7eb;
+              margin-bottom: 0;
+              flex-shrink: 0;
+            }
+            .details-grid {
+              display: grid;
+              grid-template-columns: 1fr 1fr;
+              flex: 1;
+            }
+            .detail-item {
+              padding: 0 10px;
+              border-bottom: 1px solid #f3f4f6;
+              display: flex;
+              flex-direction: column;
+              justify-content: center;
+            }
+            .detail-item:nth-child(odd) {
+              border-right: 1px solid #f3f4f6;
+            }
+            .detail-item .label {
+              font-size: 9px;
+              color: #6b7280;
+              text-transform: uppercase;
+              letter-spacing: 0.5px;
+              margin-bottom: 2px;
+            }
+            .detail-item .value {
+              font-size: 11px;
+              font-weight: 600;
+              color: #111;
+            }
+            .amount-section {
+              margin-top: 6px;
+              flex-shrink: 0;
+            }
+            .amount-row {
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+              padding: 10px 14px;
+              border: 2px solid #e5e7eb;
+              border-radius: 8px;
+              background: #f9fafb;
+              margin-top: 5px;
+            }
+            .amount-row .label {
+              font-size: 12px;
+              font-weight: 600;
+              color: #374151;
+            }
+            .amount-row .value {
+              font-size: 22px;
+              font-weight: 800;
+              color: #111;
+            }
+            .footer {
+              margin-top: 6px;
+              border-top: 1px solid #e5e7eb;
+              padding-top: 6px;
+              text-align: center;
+              flex-shrink: 0;
+            }
+            .footer p {
+              font-size: 9px;
+              color: #9ca3af;
+              margin-bottom: 2px;
+            }
+            .footer a {
+              color: #2563eb;
+              text-decoration: underline;
             }
           </style>
         </head>
         <body>
-          ${receiptHTML}
+          <div class="page">
+            <div class="meta-row">
+              <span>${printDate}</span>
+              <span>Receipt</span>
+            </div>
+
+            <div class="header">
+              <h1>RECEIPT</h1>
+              <p>Paybazaar Technologies Pvt. Ltd.</p>
+            </div>
+
+            <div class="txn-id-box">
+              <div class="label">Transaction ID</div>
+              <div class="value">${txId}</div>
+            </div>
+
+            <div class="status-box">${tx.transaction_status.toUpperCase()}</div>
+
+            <div class="details-section">
+              <div class="section-title">Transaction Details</div>
+              <div class="details-grid">
+                <div class="detail-item">
+                  <div class="label">Date &amp; Time</div>
+                  <div class="value">${formattedDate}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">Transfer Type</div>
+                  <div class="value">${transferTypeName}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">Phone Number</div>
+                  <div class="value">${tx.mobile_number}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">Bank Name</div>
+                  <div class="value">${tx.bank_name}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">Beneficiary Name</div>
+                  <div class="value">${tx.beneficiary_name}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">Account Number</div>
+                  <div class="value">${tx.account_number}</div>
+                </div>
+                <div class="detail-item">
+                  <div class="label">IFSC Code</div>
+                  <div class="value">${tx.ifsc_code}</div>
+                </div>
+              </div>
+            </div>
+
+            <div class="amount-section">
+              <div class="section-title">Amount Details</div>
+              <div class="amount-row">
+                <span class="label">Transfer Amount</span>
+                <span class="value">₹${formattedAmount}</span>
+              </div>
+            </div>
+
+            <div class="footer">
+              <p>This is a computer-generated receipt and does not require a signature.</p>
+              <p>For any technical queries, contact <a href="https://www.gvinfotech.org">www.gvinfotech.org</a> or <a href="https://www.paybazaar.in">www.paybazaar.in</a></p>
+            </div>
+          </div>
           <script>
             window.onload = () => {
               window.focus();

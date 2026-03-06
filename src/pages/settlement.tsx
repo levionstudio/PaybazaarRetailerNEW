@@ -470,7 +470,7 @@ export default function Settlement() {
       setVerifiedMpin("");
       
       // User-friendly error messages based on error type
-      let errorTitle = "❌ Transaction Failed";
+      let errorTitle = "Transaction Failed";
       let errorMessage = "Unable to process your payout. Please try again.";
       
       if (error.response?.status === 401 || error.response?.status === 403) {
