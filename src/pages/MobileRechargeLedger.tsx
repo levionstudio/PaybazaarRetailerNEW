@@ -35,10 +35,10 @@ interface MobileRechargeLedgerProps {
 
 export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerProps) {
   const { toast } = useToast();
-  
+
   /* -------------------- HELPER: Get Today's Date -------------------- */
   const getTodayDate = () => new Date().toISOString().split("T")[0];
-  
+
   const [allTransactions, setAllTransactions] = useState<MobileRechargeTransaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<MobileRechargeTransaction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -61,17 +61,17 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
         const txDate = new Date(tx.created_at);
         const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
         const end = endDate ? new Date(`${endDate}T23:59:59`) : null;
-        
+
         if (start && txDate < start) return false;
         if (end && txDate > end) return false;
-        
+
         return true;
       });
     }
 
     // 2. Status filtering (FRONTEND ONLY)
     if (statusFilter !== "ALL") {
-      filtered = filtered.filter((tx) => 
+      filtered = filtered.filter((tx) =>
         (tx.status ?? "").toUpperCase() === statusFilter.toUpperCase()
       );
     }
@@ -179,7 +179,7 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
   const handleStartDateChange = (value: string) => {
     setStartDate(value);
     setDateError("");
-    
+
     // If end date exists and new start date is after it, clear end date
     if (value && endDate) {
       const start = new Date(value);
@@ -193,7 +193,7 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
   const handleEndDateChange = (value: string) => {
     setEndDate(value);
     setDateError("");
-    
+
     // If start date exists and new end date is before it, clear start date
     if (value && startDate) {
       const start = new Date(startDate);
@@ -212,7 +212,7 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
     end_date?: string;
   }) => {
     const queryParams = new URLSearchParams();
-    
+
     // Always add limit and offset
     if (params.limit !== undefined) {
       queryParams.append("limit", params.limit.toString());
@@ -220,7 +220,7 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
     if (params.offset !== undefined) {
       queryParams.append("offset", params.offset.toString());
     }
-    
+
     // Add date params with timestamps for proper filtering
     if (params.start_date && params.start_date.trim()) {
       queryParams.append("start_date", `${params.start_date.trim()}T00:00:00`);
@@ -228,7 +228,7 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
     if (params.end_date && params.end_date.trim()) {
       queryParams.append("end_date", `${params.end_date.trim()}T23:59:59`);
     }
-    
+
     return queryParams.toString();
   }, []);
 
@@ -236,7 +236,7 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
   const fetchTransactions = useCallback(async () => {
     if (!userId) return;
     if (!validateDates()) return;
-    
+
     const token = localStorage.getItem("authToken");
     setLoading(true);
 
@@ -256,12 +256,12 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
 
       if (response.data?.status === "success" && Array.isArray(response.data.data?.recharges)) {
         const raw: MobileRechargeTransaction[] = response.data.data.recharges || [];
-        
+
         const sorted = raw.sort(
           (a: MobileRechargeTransaction, b: MobileRechargeTransaction) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
-        
+
         setAllTransactions(sorted);
       } else {
         setAllTransactions([]);
@@ -308,8 +308,12 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
     }
   };
 
-  const formatAmount = (amount: number) =>
-    amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatAmount = (amount: number | string | null | undefined) => {
+    if (amount === null || amount === undefined) return "0.00";
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    if (isNaN(num)) return "0.00";
+    return num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   const getStatusColor = (status?: string) => {
     switch ((status ?? "").toUpperCase()) {
@@ -332,15 +336,20 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
   // Export to Excel - use filtered data
   const exportToExcel = async () => {
     if (filteredTransactions.length === 0) {
-      toast({ 
-        title: "No Data", 
-        description: "No transactions to export", 
-        variant: "destructive" 
+      toast({
+        title: "No Data",
+        description: "No transactions to export",
+        variant: "destructive"
       });
       return;
     }
 
     try {
+      const toSafeFixed = (val: number | string | null | undefined) => {
+        if (val === null || val === undefined) return "0.00";
+        const n = typeof val === "string" ? parseFloat(val) : val;
+        return isNaN(n) ? "0.00" : n.toFixed(2);
+      };
       const exportData = filteredTransactions.map((tx, i) => ({
         "S.No": i + 1,
         "Transaction ID": tx.mobile_recharge_transaction_id,
@@ -352,17 +361,17 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
         "Operator": tx.operator_name,
         "Circle": tx.circle_name,
         "Recharge Type": getRechargeTypeName(tx.recharge_type),
-        "Before Balance (₹)": tx.before_balance.toFixed(2),
-        "Amount (₹)": tx.amount.toFixed(2),
-        "After Balance (₹)": tx.after_balance.toFixed(2),
-        "Commission (₹)": (tx.commision || 0).toFixed(2),
+        "Before Balance (₹)": toSafeFixed(tx.before_balance),
+        "Amount (₹)": toSafeFixed(tx.amount),
+        "After Balance (₹)": toSafeFixed(tx.after_balance),
+        "Commission (₹)": toSafeFixed(tx.commision),
         "Status": tx.status,
       }));
 
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Mobile Recharge");
-      
+
       // Set column widths
       worksheet["!cols"] = [
         { wch: 8 },  // S.No
@@ -381,12 +390,12 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
         { wch: 12 }, // Commission
         { wch: 12 }, // Status
       ];
-      
+
       XLSX.writeFile(workbook, `Mobile_Recharge_${new Date().toISOString().split("T")[0]}.xlsx`);
-      
-      toast({ 
-        title: "Success", 
-        description: `Exported ${exportData.length} transaction${exportData.length > 1 ? 's' : ''}` 
+
+      toast({
+        title: "Success",
+        description: `Exported ${exportData.length} transaction${exportData.length > 1 ? 's' : ''}`
       });
     } catch (error) {
       console.error("Export error:", error);
@@ -407,10 +416,10 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
     setCurrentPage(1);
   };
 
-  const hasActiveFilters = 
-    searchTerm || 
-    statusFilter !== "ALL" || 
-    startDate !== getTodayDate() || 
+  const hasActiveFilters =
+    searchTerm ||
+    statusFilter !== "ALL" ||
+    startDate !== getTodayDate() ||
     endDate !== getTodayDate();
 
   // Pagination with filtered data
@@ -430,10 +439,10 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
             <h2 className="text-lg font-semibold">Filters</h2>
           </div>
           {hasActiveFilters && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={clearFilters} 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearFilters}
               className="text-red-600 hover:bg-red-50"
             >
               <X className="h-4 w-4 mr-1" />
@@ -606,19 +615,19 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
               Showing {totalRecords > 0 ? startIdx + 1 : 0} to{" "}
               {endIdx > totalRecords ? totalRecords : endIdx} of {totalRecords} records
             </div>
-            <Button 
-              onClick={exportToExcel} 
-              disabled={filteredTransactions.length === 0} 
-              variant="outline" 
+            <Button
+              onClick={exportToExcel}
+              disabled={filteredTransactions.length === 0}
+              variant="outline"
               size="sm"
             >
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export
             </Button>
-            <Button 
-              onClick={fetchTransactions} 
-              disabled={loading} 
-              variant="outline" 
+            <Button
+              onClick={fetchTransactions}
+              disabled={loading}
+              variant="outline"
               size="sm"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
@@ -665,7 +674,7 @@ export default function MobileRechargeLedger({ userId }: MobileRechargeLedgerPro
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedTransactions.map((transaction,index) => (
+                paginatedTransactions.map((transaction, index) => (
                   <TableRow key={transaction.mobile_recharge_transaction_id}>
                     <TableCell className="text-center whitespace-nowrap">
                       {startIdx + index + 1}

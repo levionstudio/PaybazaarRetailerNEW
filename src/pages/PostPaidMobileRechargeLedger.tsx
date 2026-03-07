@@ -37,10 +37,10 @@ interface PostpaidMobileRechargeLedgerProps {
 
 export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileRechargeLedgerProps) {
   const { toast } = useToast();
-  
+
   /* -------------------- HELPER: Get Today's Date -------------------- */
   const getTodayDate = () => new Date().toISOString().split("T")[0];
-  
+
   const [allTransactions, setAllTransactions] = useState<PostpaidRechargeTransaction[]>([]);
   const [filteredTransactions, setFilteredTransactions] = useState<PostpaidRechargeTransaction[]>([]);
   const [loading, setLoading] = useState(false);
@@ -63,17 +63,17 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
         const txDate = new Date(tx.created_at);
         const start = startDate ? new Date(`${startDate}T00:00:00`) : null;
         const end = endDate ? new Date(`${endDate}T23:59:59`) : null;
-        
+
         if (start && txDate < start) return false;
         if (end && txDate > end) return false;
-        
+
         return true;
       });
     }
 
     // 2. Status filtering (FRONTEND ONLY)
     if (statusFilter !== "ALL") {
-      filtered = filtered.filter((tx) => 
+      filtered = filtered.filter((tx) =>
         (tx.recharge_status ?? "").toUpperCase() === statusFilter.toUpperCase()
       );
     }
@@ -84,7 +84,7 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
       filtered = filtered.filter((tx) => {
         return (
           String(tx.postpaid_recharge_transaction_id ?? "").includes(search) ||
-        (tx.created_at ?? "").includes(search) ||
+          (tx.created_at ?? "").includes(search) ||
           (tx.mobile_number ?? "").includes(search) ||
           (tx.operator_name ?? "").toLowerCase().includes(search) ||
           (tx.circle_name ?? "").toLowerCase().includes(search) ||
@@ -175,7 +175,7 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
   const handleStartDateChange = (value: string) => {
     setStartDate(value);
     setDateError("");
-    
+
     if (value && endDate) {
       const start = new Date(value);
       const end = new Date(endDate);
@@ -188,7 +188,7 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
   const handleEndDateChange = (value: string) => {
     setEndDate(value);
     setDateError("");
-    
+
     if (value && startDate) {
       const start = new Date(startDate);
       const end = new Date(value);
@@ -206,30 +206,30 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
     end_date?: string;
   }) => {
     const queryParams = new URLSearchParams();
-    
+
     if (params.limit !== undefined) {
       queryParams.append("limit", params.limit.toString());
     }
     if (params.offset !== undefined) {
       queryParams.append("offset", params.offset.toString());
     }
-    
+
     if (params.start_date && params.start_date.trim()) {
       queryParams.append("start_date", `${params.start_date.trim()}T00:00:00`);
     }
     if (params.end_date && params.end_date.trim()) {
       queryParams.append("end_date", `${params.end_date.trim()}T23:59:59`);
     }
-    
+
     return queryParams.toString();
   }, []);
 
   // Fetch transactions (NO SEARCH, NO STATUS)
   const fetchTransactions = useCallback(async () => {
     if (!userId) return;
-    
+
     if (!validateDates()) return;
-    
+
     const token = localStorage.getItem("authToken");
     setLoading(true);
 
@@ -252,12 +252,12 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
 
       if (response.data?.status === "success" && Array.isArray(response.data.data?.history)) {
         const raw: PostpaidRechargeTransaction[] = response.data.data.history || [];
-        
+
         const sorted = raw.sort(
           (a: PostpaidRechargeTransaction, b: PostpaidRechargeTransaction) =>
             new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
         );
-        
+
         setAllTransactions(sorted); // Store all data
       } else {
         setAllTransactions([]);
@@ -305,8 +305,12 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
     }
   };
 
-  const formatAmount = (amount: number) =>
-    amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const formatAmount = (amount: number | string | null | undefined) => {
+    if (amount === null || amount === undefined) return "0.00";
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    if (isNaN(num)) return "0.00";
+    return num.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  };
 
   const getStatusColor = (status?: string) => {
     switch ((status ?? "").toUpperCase()) {
@@ -320,15 +324,20 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
   // Export to Excel - use filtered data
   const exportToExcel = async () => {
     if (filteredTransactions.length === 0) {
-      toast({ 
-        title: "No Data", 
-        description: "No transactions to export", 
-        variant: "destructive" 
+      toast({
+        title: "No Data",
+        description: "No transactions to export",
+        variant: "destructive"
       });
       return;
     }
 
     try {
+      const toSafeFixed = (val: number | string | null | undefined) => {
+        if (val === null || val === undefined) return "0.00";
+        const n = typeof val === "string" ? parseFloat(val) : val;
+        return isNaN(n) ? "0.00" : n.toFixed(2);
+      };
       const exportData = filteredTransactions.map((tx, i) => ({
         "S.No": i + 1,
         "Transaction ID": tx.postpaid_recharge_transaction_id,
@@ -339,10 +348,10 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
         "Mobile Number": tx.mobile_number,
         "Operator": tx.operator_name,
         "Circle": tx.circle_name,
-        "Before Balance (₹)": tx.before_balance.toFixed(2),
-        "Amount (₹)": tx.amount.toFixed(2),
-        "After Balance (₹)": tx.after_balance.toFixed(2),
-        "Commission (₹)": (tx.commission || 0).toFixed(2),
+        "Before Balance (₹)": toSafeFixed(tx.before_balance),
+        "Amount (₹)": toSafeFixed(tx.amount),
+        "After Balance (₹)": toSafeFixed(tx.after_balance),
+        "Commission (₹)": toSafeFixed(tx.commission),
         "Order ID": tx.order_id,
         "Status": tx.recharge_status,
       }));
@@ -350,7 +359,7 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
       const worksheet = XLSX.utils.json_to_sheet(exportData);
       const workbook = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(workbook, worksheet, "Postpaid Recharge");
-      
+
       worksheet["!cols"] = [
         { wch: 8 },  // S.No
         { wch: 15 }, // Transaction ID
@@ -368,12 +377,12 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
         { wch: 30 }, // Order ID
         { wch: 12 }, // Status
       ];
-      
+
       XLSX.writeFile(workbook, `Postpaid_Recharge_Ledger_${new Date().toISOString().split("T")[0]}.xlsx`);
-      
-      toast({ 
-        title: "Success", 
-        description: `Exported ${exportData.length} transaction${exportData.length > 1 ? 's' : ''}` 
+
+      toast({
+        title: "Success",
+        description: `Exported ${exportData.length} transaction${exportData.length > 1 ? 's' : ''}`
       });
     } catch (error) {
       console.error("Export error:", error);
@@ -394,10 +403,10 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
     setCurrentPage(1);
   };
 
-  const hasActiveFilters = 
-    searchTerm || 
-    statusFilter !== "ALL" || 
-    startDate !== getTodayDate() || 
+  const hasActiveFilters =
+    searchTerm ||
+    statusFilter !== "ALL" ||
+    startDate !== getTodayDate() ||
     endDate !== getTodayDate();
 
   // Pagination with filtered data
@@ -417,10 +426,10 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
             <h2 className="text-lg font-semibold">Filters</h2>
           </div>
           {hasActiveFilters && (
-            <Button 
-              variant="outline" 
-              size="sm" 
-              onClick={clearFilters} 
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={clearFilters}
               className="text-red-600 hover:bg-red-50"
             >
               <X className="h-4 w-4 mr-1" />
@@ -593,19 +602,19 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
               Showing {totalRecords > 0 ? startIdx + 1 : 0} to{" "}
               {endIdx > totalRecords ? totalRecords : endIdx} of {totalRecords} records
             </div>
-            <Button 
-              onClick={exportToExcel} 
-              disabled={filteredTransactions.length === 0} 
-              variant="outline" 
+            <Button
+              onClick={exportToExcel}
+              disabled={filteredTransactions.length === 0}
+              variant="outline"
               size="sm"
             >
               <FileSpreadsheet className="h-4 w-4 mr-2" />
               Export
             </Button>
-            <Button 
-              onClick={fetchTransactions} 
-              disabled={loading} 
-              variant="outline" 
+            <Button
+              onClick={fetchTransactions}
+              disabled={loading}
+              variant="outline"
               size="sm"
             >
               <RefreshCw className={`h-4 w-4 mr-2 ${loading ? "animate-spin" : ""}`} />
@@ -651,12 +660,12 @@ export default function PostpaidMobileRechargeLedger({ userId }: PostpaidMobileR
                   </TableCell>
                 </TableRow>
               ) : (
-                paginatedTransactions.map((transaction,index) => (
-                    
+                paginatedTransactions.map((transaction, index) => (
+
                   <TableRow key={transaction.postpaid_recharge_transaction_id}>
-                      <TableCell className="text-center whitespace-nowrap">
-      {startIdx + index + 1}
-    </TableCell>
+                    <TableCell className="text-center whitespace-nowrap">
+                      {startIdx + index + 1}
+                    </TableCell>
                     <TableCell className="text-center whitespace-nowrap">
                       {formatDate(transaction.created_at)}
                     </TableCell>

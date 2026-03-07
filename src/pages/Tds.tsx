@@ -61,40 +61,40 @@ const TDSCommissionPage = () => {
   const token = localStorage.getItem("authToken");
   const [userId, setUserId] = useState("");
   const [userName, setUserName] = useState("");
-  
+
   // Get today's date in YYYY-MM-DD format
   const getTodayDate = () => {
     const today = new Date();
     return today.toISOString().split('T')[0];
   };
-  
+
   // All transactions from API (unfiltered)
   const [allTransactions, setAllTransactions] = useState<TDSCommission[]>([]);
-  
+
   // Filtered transactions based on all filters
   const [filteredTransactions, setFilteredTransactions] = useState<TDSCommission[]>([]);
-  
+
   // Filter states
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("ALL");
   const [startDate, setStartDate] = useState(getTodayDate());
   const [endDate, setEndDate] = useState(getTodayDate());
-  
+
   // Pagination states
   const [currentPage, setCurrentPage] = useState(1);
   const [recordsPerPage, setRecordsPerPage] = useState(10);
-  
+
   // Loading states
   const [loading, setLoading] = useState(false);
   const [searched, setSearched] = useState(false);
-  
+
   // Dialog states
   const [detailsOpen, setDetailsOpen] = useState(false);
   const [selectedTransaction, setSelectedTransaction] = useState<TDSCommission | null>(null);
 
   // Decode token
   useEffect(() => {
-    
+
     if (!token) {
       console.error("❌ No authentication token found");
       toast.error("No authentication token found. Please login.");
@@ -104,14 +104,14 @@ const TDSCommissionPage = () => {
 
     try {
       const decoded = jwtDecode<DecodedToken>(token);
-      
+
       if (!decoded.exp || decoded.exp * 1000 < Date.now()) {
         toast.error("Session expired. Please login again.");
         localStorage.removeItem("authToken");
         navigate("/login");
         return;
       }
-      
+
       setUserId(decoded.user_id);
       setUserName(decoded.user_name);
     } catch (error) {
@@ -129,7 +129,7 @@ const TDSCommissionPage = () => {
 
     setLoading(true);
     setSearched(true);
-    
+
     try {
       const response = await axios.get(
         `${import.meta.env.VITE_API_BASE_URL}/commision/get/tds/${userId}`,
@@ -138,17 +138,17 @@ const TDSCommissionPage = () => {
         }
       );
 
-      
+
       const list: TDSCommission[] = response.data?.data?.tds_commisions || [];
-      
-      
+
+
       // Sort by date (newest first)
       const sorted = list.sort(
         (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
       );
 
       setAllTransactions(sorted);
-      
+
       if (sorted.length > 0) {
         toast.success(`Loaded ${sorted.length} TDS commission${sorted.length > 1 ? 's' : ''}`);
       } else {
@@ -160,9 +160,9 @@ const TDSCommissionPage = () => {
         response: error.response?.data,
         status: error.response?.status,
       });
-      
+
       setAllTransactions([]);
-      
+
       if (error.response?.status === 404) {
         toast.info("No TDS commissions found");
       } else {
@@ -189,10 +189,10 @@ const TDSCommissionPage = () => {
       filtered = filtered.filter((t) => {
         const txDate = new Date(t.created_at);
         const txDateStr = txDate.toISOString().split('T')[0];
-        
+
         const start = startDate || "1900-01-01";
         const end = endDate || "2100-12-31";
-        
+
         return txDateStr >= start && txDateStr <= end;
       });
     }
@@ -236,6 +236,11 @@ const TDSCommissionPage = () => {
         return;
       }
 
+      const toSafeFixed = (val: number | string | null | undefined) => {
+        if (val === null || val === undefined) return "0.00";
+        const n = typeof val === "string" ? parseFloat(val) : val;
+        return isNaN(n) ? "0.00" : n.toFixed(2);
+      };
       const data = filteredTransactions.map((t, i) => ({
         "S.No": i + 1,
         "Date & Time": formatDate(t.created_at),
@@ -244,16 +249,16 @@ const TDSCommissionPage = () => {
         "User ID": t.user_id,
         "User Name": t.user_name,
         "PAN Number": t.pan_number,
-        "Commission (₹)": t.commision.toFixed(2),
-        "TDS (₹)": t.tds.toFixed(2),
-        "Paid Commission (₹)": t.paid_commision.toFixed(2),
+        "Commission (₹)": toSafeFixed(t.commision),
+        "TDS (₹)": toSafeFixed(t.tds),
+        "Paid Commission (₹)": toSafeFixed(t.paid_commision),
         "Status": t.status,
       }));
 
       // Calculate totals from filtered data
-      const totalCommission = filteredTransactions.reduce((sum, t) => sum + t.commision, 0);
-      const totalTDS = filteredTransactions.reduce((sum, t) => sum + t.tds, 0);
-      const totalPaidCommission = filteredTransactions.reduce((sum, t) => sum + t.paid_commision, 0);
+      const totalCommission = filteredTransactions.reduce((sum, t) => sum + (t.commision ?? 0), 0);
+      const totalTDS = filteredTransactions.reduce((sum, t) => sum + (t.tds ?? 0), 0);
+      const totalPaidCommission = filteredTransactions.reduce((sum, t) => sum + (t.paid_commision ?? 0), 0);
 
       const summaryRow = {
         "S.No": "",
@@ -263,9 +268,9 @@ const TDSCommissionPage = () => {
         "User ID": "",
         "User Name": "",
         "PAN Number": "",
-        "Commission (₹)": totalCommission.toFixed(2),
-        "TDS (₹)": totalTDS.toFixed(2),
-        "Paid Commission (₹)": totalPaidCommission.toFixed(2),
+        "Commission (₹)": toSafeFixed(totalCommission),
+        "TDS (₹)": toSafeFixed(totalTDS),
+        "Paid Commission (₹)": toSafeFixed(totalPaidCommission),
         "Status": "",
       };
 
@@ -283,7 +288,7 @@ const TDSCommissionPage = () => {
 
       const timestamp = new Date().toISOString().slice(0, 10);
       const filename = `TDS_Commissions_${userId}_${timestamp}.xlsx`;
-      
+
       XLSX.writeFile(wb, filename);
       toast.success(`Exported ${filteredTransactions.length} TDS commissions successfully`);
     } catch (error) {
@@ -323,8 +328,11 @@ const TDSCommissionPage = () => {
     }
   };
 
-  const formatAmount = (amount: number) => {
-    return amount.toLocaleString("en-IN", {
+  const formatAmount = (amount: number | string | null | undefined) => {
+    if (amount === null || amount === undefined) return "0.00";
+    const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    if (isNaN(num)) return "0.00";
+    return num.toLocaleString("en-IN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     });
@@ -336,9 +344,9 @@ const TDSCommissionPage = () => {
   };
 
   // Stats calculations based on filtered data
-  const totalCommission = filteredTransactions.reduce((sum, t) => sum + t.commision, 0);
-  const totalTDS = filteredTransactions.reduce((sum, t) => sum + t.tds, 0);
-  const totalPaidCommission = filteredTransactions.reduce((sum, t) => sum + t.paid_commision, 0);
+  const totalCommission = filteredTransactions.reduce((sum, t) => sum + (t.commision ?? 0), 0);
+  const totalTDS = filteredTransactions.reduce((sum, t) => sum + (t.tds ?? 0), 0);
+  const totalPaidCommission = filteredTransactions.reduce((sum, t) => sum + (t.paid_commision ?? 0), 0);
 
   // Pagination calculations
   const totalPages = Math.ceil(filteredTransactions.length / recordsPerPage);
@@ -481,7 +489,7 @@ const TDSCommissionPage = () => {
                         </Button>
                       )}
                     </div>
-                    
+
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-4">
                       <div className="space-y-2">
                         <Label className="text-sm font-medium text-gray-700 flex items-center gap-1">
@@ -514,8 +522,8 @@ const TDSCommissionPage = () => {
 
                       <div className="space-y-2">
                         <Label className="text-sm font-medium text-gray-700">Status</Label>
-                        <Select 
-                          value={statusFilter} 
+                        <Select
+                          value={statusFilter}
                           onValueChange={(value) => setStatusFilter(value)}
                         >
                           <SelectTrigger className="bg-white h-11">
@@ -625,7 +633,7 @@ const TDSCommissionPage = () => {
                               Date & Time
                             </TableHead>
                             <TableHead className="text-center text-xs font-bold uppercase text-gray-700 whitespace-nowrap px-4">
-                            TDS ID
+                              TDS ID
                             </TableHead>
                             <TableHead className="text-center text-xs font-bold uppercase text-gray-700 whitespace-nowrap px-4">
                               PAN Number
@@ -651,9 +659,8 @@ const TDSCommissionPage = () => {
                           {paginatedTransactions.map((tx, idx) => (
                             <TableRow
                               key={tx.tds_commision_id}
-                              className={`border-b hover:bg-gray-50 transition-colors ${
-                                idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"
-                              }`}
+                              className={`border-b hover:bg-gray-50 transition-colors ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/50"
+                                }`}
                             >
                               <TableCell className="py-4 px-4 text-center text-sm font-medium text-gray-900">
                                 {indexOfFirstRecord + idx + 1}
