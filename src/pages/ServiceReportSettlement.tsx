@@ -455,6 +455,11 @@ export default function ServiceReportSettlement() {
     setIsExporting(true);
 
     try {
+      const toSafeFixed = (val: number | string | null | undefined) => {
+        if (val === null || val === undefined) return "0.00";
+        const n = typeof val === "string" ? parseFloat(val) : val;
+        return isNaN(n) ? "0.00" : n.toFixed(2);
+      };
       const exportData = filteredTransactions.map((tx, index) => ({
         "S.No": index + 1,
         "Transaction ID": tx.operator_transaction_id || "-",
@@ -464,11 +469,11 @@ export default function ServiceReportSettlement() {
         "Beneficiary Name": tx.beneficiary_name,
         "Account Number": tx.account_number,
         "IFSC Code": tx.ifsc_code,
-        "Amount (₹)": tx.amount.toFixed(2),
-        "Before Balance (₹)": tx.before_balance.toFixed(2),
-        "After Balance (₹)": tx.after_balance.toFixed(2),
+        "Amount (₹)": toSafeFixed(tx.amount),
+        "Before Balance (₹)": toSafeFixed(tx.before_balance),
+        "After Balance (₹)": toSafeFixed(tx.after_balance),
         "Transfer Type": getTransferTypeName(tx.transfer_type),
-        "Commission (₹)": tx.retailer_commision.toFixed(2),
+        "Commission (₹)": toSafeFixed(tx.retailer_commision),
         Status: tx.transaction_status,
       }));
 
@@ -531,8 +536,10 @@ export default function ServiceReportSettlement() {
     }
   };
 
-  const formatAmount = (amount: number | string) => {
+  const formatAmount = (amount: number | string | null | undefined) => {
+    if (amount === null || amount === undefined) return "0.00";
     const num = typeof amount === "string" ? parseFloat(amount) : amount;
+    if (isNaN(num)) return "0.00";
     return num.toLocaleString("en-IN", {
       minimumFractionDigits: 2,
       maximumFractionDigits: 2,
