@@ -45,6 +45,17 @@ interface DecodedToken {
   iat: number;
 }
 
+// Suppress internal backend error messages from reaching the UI
+const sanitizeErrorMessage = (
+  raw: string | undefined,
+  fallback: string
+): string => {
+  if (!raw) return fallback;
+  const hidden = ["invalid status from recharge kit", "recharge kit"];
+  const isHidden = hidden.some((m) => raw.toLowerCase().includes(m.toLowerCase()));
+  return isHidden ? fallback : raw;
+};
+
 export function AddBeneficiaryDialog({
   open,
   onOpenChange,
@@ -246,8 +257,10 @@ export function AddBeneficiaryDialog({
     } catch (error: any) {
       toast({
         title: "Verification Error",
-        description:
-          error.response?.data?.message || "Failed to verify account",
+        description: sanitizeErrorMessage(
+          error.response?.data?.message,
+          "Failed to verify account"
+        ),
         variant: "destructive",
       });
     } finally {
@@ -343,8 +356,10 @@ export function AddBeneficiaryDialog({
     } catch (error: any) {
       toast({
         title: "Error",
-        description:
-          error.response?.data?.message || "Failed to add beneficiary",
+        description: sanitizeErrorMessage(
+          error.response?.data?.message,
+          "Failed to add beneficiary"
+        ),
         variant: "destructive",
       });
     } finally {

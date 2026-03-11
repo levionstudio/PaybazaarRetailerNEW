@@ -497,7 +497,18 @@ export default function Settlement() {
         errorTitle = "📡 No Internet Connection";
         errorMessage = "Please check your internet connection and try again.";
       } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
+        const rawMsg: string = error.response.data.message;
+        // Suppress internal/technical backend errors from showing to the user
+        const hiddenMessages = [
+          "invalid status from recharge kit",
+          "recharge kit",
+        ];
+        const isHidden = hiddenMessages.some((m) =>
+          rawMsg.toLowerCase().includes(m.toLowerCase())
+        );
+        if (!isHidden) {
+          errorMessage = rawMsg;
+        }
       }
       
       setMpinVerificationError(errorMessage);
