@@ -1387,7 +1387,7 @@ export default function ServiceReportSettlement() {
               {/* Transaction Status */}
               <div className="space-y-3">
                 <div className="text-center">
-                  <p className="text-xs text-black mb-1">Transaction ID</p>
+                  <p className="text-xs text-black mb-1"> UTR Number</p>
                   <p className="font-mono text-sm font-semibold">
                     {selectedTransaction.operator_transaction_id || selectedTransaction.payout_transaction_id}
                   </p>

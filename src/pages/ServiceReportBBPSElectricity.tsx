@@ -1247,7 +1247,7 @@ export default function ElectricityBillReport() {
               {/* Transaction Status */}
               <div className="space-y-3">
                 <div className="text-center">
-                  <p className="text-xs text-black mb-1">Transaction ID</p>
+                  <p className="text-xs text-black mb-1">UTR Number</p>
                   <p className="font-mono text-sm font-semibold">
                     {selectedTransaction.electricity_bill_transaction_id}
                   </p>
