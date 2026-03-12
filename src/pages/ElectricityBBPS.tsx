@@ -24,7 +24,6 @@ import {
   Loader2,
   WifiOff,
   AlertTriangle,
-  Receipt,
   FileText,
 } from "lucide-react";
 import axios from "axios";
@@ -41,7 +40,6 @@ import { useNavigate } from "react-router-dom";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-// Get auth headers
 const getAuthHeaders = () => {
   const token = localStorage.getItem("authToken");
   return {
@@ -52,17 +50,12 @@ const getAuthHeaders = () => {
   };
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
 // Types
+// ─────────────────────────────────────────────────────────────────────────────
 interface Operator {
   operator_code: number;
   operator_name: string;
-}
-
-interface BillFetchResponse {
-  error: number;
-  msg: string;
-  status: number;
-  billAmount: any;
 }
 
 interface BillDetails {
@@ -93,6 +86,172 @@ interface PaymentHistory {
   created_at: string;
 }
 
+interface ElectricityReceiptData {
+  customerId: string;
+  consumerName: string;
+  operatorName: string;
+  customerEmail: string;
+  amount: number;
+  orderId: string;
+  status: string;
+  createdAt: string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Write receipt HTML into an already-opened tab
+// ─────────────────────────────────────────────────────────────────────────────
+const writeReceiptToTab = (tab: Window, data: ElectricityReceiptData) => {
+  const formatDate = (d: string) => {
+    try {
+      return new Date(d).toLocaleString("en-IN", {
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    } catch {
+      return d;
+    }
+  };
+
+  const fmtAmount = (v: number) =>
+    v.toLocaleString("en-IN", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+
+  const statusUp = data.status.toUpperCase();
+
+  type SC = { bg: string; border: string; text: string };
+  const statusColors: Record<string, SC> = {
+    SUCCESS:   { bg: "#f0fdf4", border: "#86efac", text: "#16a34a" },
+    PENDING:   { bg: "#fefce8", border: "#fde047", text: "#ca8a04" },
+    FAILED:    { bg: "#fef2f2", border: "#fca5a5", text: "#dc2626" },
+    INITIATED: { bg: "#eff6ff", border: "#93c5fd", text: "#1d4ed8" },
+  };
+  const sc: SC =
+    statusColors[statusUp] ?? {
+      bg: "#f9fafb",
+      border: "#d1d5db",
+      text: "#4b5563",
+    };
+
+  const row = (label: string, value: string) => `
+    <div class="row">
+      <span class="r-label">${label}</span>
+      <span class="r-value">${value}</span>
+    </div>`;
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+  <title>Electricity Bill Payment Receipt</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: #f3f4f6;
+      font-family: 'Segoe UI', Arial, sans-serif;
+      padding: 28px 16px 48px;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+      color: #111827;
+    }
+    .action-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
+    .btn { padding: 8px 26px; border-radius: 7px; font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none; letter-spacing: 0.01em; }
+    .btn-print { background: #4f46e5; color: #fff; }
+    .btn-print:hover { background: #4338ca; }
+    .btn-close { background: #e5e7eb; color: #374151; }
+    .btn-close:hover { background: #d1d5db; }
+    .receipt { width: 148mm; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 14px rgba(0,0,0,0.09); }
+    .r-header { text-align: center; padding: 22px 28px 16px; border-bottom: 1.5px solid #e5e7eb; }
+    .r-header h1 { font-size: 1.28rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #111827; }
+    .r-header .subtitle { font-size: 0.76rem; color: #6b7280; margin-top: 3px; }
+    .r-header .company { font-size: 0.78rem; font-weight: 700; color: #374151; margin-top: 4px; }
+    .id-block { text-align: center; padding: 14px 28px 6px; }
+    .id-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
+    .id-value { font-family: 'Courier New', monospace; font-size: 0.9rem; font-weight: 700; color: #111827; }
+    .status-box { margin: 10px 28px 16px; padding: 10px 0; border-radius: 8px; border: 2px solid ${sc.border}; background: ${sc.bg}; color: ${sc.text}; text-align: center; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.10em; text-transform: uppercase; }
+    .section { padding: 0 28px 14px; }
+    .section-title { font-size: 0.78rem; font-weight: 700; color: #111827; padding-bottom: 7px; border-bottom: 1.5px solid #e5e7eb; margin-bottom: 2px; }
+    .row { display: flex; justify-content: space-between; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f3f4f6; gap: 16px; font-size: 0.82rem; }
+    .row:last-child { border-bottom: none; }
+    .r-label { color: #6b7280; flex-shrink: 0; }
+    .r-value { font-weight: 700; color: #111827; text-align: right; word-break: break-word; }
+    .amount-section { padding: 0 28px 18px; }
+    .amount-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border: 1.5px solid #e5e7eb; border-radius: 7px; background: #f9fafb; margin-top: 7px; }
+    .a-label { font-size: 0.85rem; font-weight: 600; color: #374151; }
+    .a-value { font-size: 1.5rem; font-weight: 800; color: #111827; }
+    .r-footer { border-top: 1.5px solid #e5e7eb; padding: 12px 28px; text-align: center; background: #fafafa; }
+    .r-footer p { font-size: 0.67rem; color: #9ca3af; line-height: 1.5; margin-bottom: 2px; }
+    .r-footer a { color: #4f46e5; text-decoration: none; }
+    @media print {
+      body { background: white; padding: 0; }
+      .action-bar { display: none !important; }
+      .receipt { width: 148mm; border: none; border-radius: 0; box-shadow: none; margin: 0 auto; }
+      @page { size: 148mm auto; margin: 8mm; }
+    }
+  </style>
+</head>
+<body>
+  <div class="action-bar">
+    <button class="btn btn-print" onclick="window.print()">🖨️ &nbsp;Print Receipt</button>
+    <button class="btn btn-close" onclick="window.close()">✕ &nbsp;Close</button>
+  </div>
+  <div class="receipt">
+    <div class="r-header">
+      <h1>Payment Receipt</h1>
+      <div class="subtitle">Electricity Bill Payment</div>
+      <div class="company">Paybazaar Technologies Pvt. Ltd.</div>
+    </div>
+    <div class="id-block">
+      <div class="id-label">UTR Number</div>
+      <div class="id-value">${data.orderId}</div>
+    </div>
+    <div class="status-box">${statusUp}</div>
+    <div class="section">
+      <div class="section-title">Consumer Details</div>
+      ${data.consumerName ? row("Consumer Name", data.consumerName) : ""}
+      ${row("Customer / Consumer ID", data.customerId)}
+      ${row("Operator", data.operatorName)}
+      ${row("Email", data.customerEmail)}
+    </div>
+    <div class="section">
+      <div class="section-title">Transaction Details</div>
+      ${row("Date &amp; Time", formatDate(data.createdAt))}
+      ${row("Payment Mode", "BBPS – Electricity")}
+    </div>
+    <div class="amount-section">
+      <div class="section-title">Amount Details</div>
+      <div class="amount-row">
+        <span class="a-label">Amount Paid</span>
+        <span class="a-value">₹${fmtAmount(data.amount)}</span>
+      </div>
+    </div>
+    <div class="r-footer">
+      <p>This is a computer-generated receipt and does not require a signature.</p>
+      <p>
+        For any technical queries, contact
+        <a href="https://www.gvinfotech.org" target="_blank">www.gvinfotech.org</a>
+        or
+        <a href="https://www.paybazaar.in" target="_blank">www.paybazaar.in</a>
+      </p>
+    </div>
+  </div>
+</body>
+</html>`;
+
+  tab.document.open();
+  tab.document.write(html);
+  tab.document.close();
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main Component
+// ─────────────────────────────────────────────────────────────────────────────
 const ElectricityBillPayment = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -109,7 +268,12 @@ const ElectricityBillPayment = () => {
   const [billDetails, setBillDetails] = useState<BillDetails | null>(null);
   const [isBillDialogOpen, setIsBillDialogOpen] = useState(false);
 
-  // Payment form state
+  // ── Receipt / success state ──
+  const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
+  const [transactionId, setTransactionId] = useState<string | null>(null);
+  const [pendingReceiptData, setPendingReceiptData] =
+    useState<ElectricityReceiptData | null>(null);
+
   const [paymentForm, setPaymentForm] = useState({
     customerId: "",
     customerEmail: "",
@@ -118,10 +282,9 @@ const ElectricityBillPayment = () => {
     amount: "",
   });
 
-  // Extract retailer ID from JWT token
+  // ── Decode JWT ──
   useEffect(() => {
     const token = localStorage.getItem("authToken");
-    
     if (!token) {
       toast({
         title: "⚠️ Authentication Required",
@@ -131,14 +294,11 @@ const ElectricityBillPayment = () => {
       navigate("/login");
       return;
     }
-    
     try {
       const decoded: JwtPayload = jwtDecode(token);
-      
       //@ts-ignore
       const userId =
         decoded.retailer_id || decoded.data?.user_id || decoded.user_id;
-
       if (!userId) {
         toast({
           title: "⚠️ Session Error",
@@ -148,9 +308,8 @@ const ElectricityBillPayment = () => {
         navigate("/login");
         return;
       }
-
       setRetailerId(userId);
-    } catch (error) {
+    } catch {
       toast({
         title: "⚠️ Session Expired",
         description: "Your session has expired. Please log in again to continue.",
@@ -160,20 +319,17 @@ const ElectricityBillPayment = () => {
     }
   }, [toast, navigate]);
 
-  // Fetch operators
+  // ── Fetch operators ──
   useEffect(() => {
     const fetchOperators = async () => {
       setIsLoadingOperators(true);
       try {
-        const url = `${API_BASE_URL}/bbps/get/electricity/operators`;
-        const response = await axios.get(url, getAuthHeaders());
-        
+        const response = await axios.get(
+          `${API_BASE_URL}/bbps/get/electricity/operators`,
+          getAuthHeaders()
+        );
         const operatorsData = response.data?.data?.operators || [];
-        
-        if (!Array.isArray(operatorsData)) {
-          throw new Error("Invalid response format");
-        }
-
+        if (!Array.isArray(operatorsData)) throw new Error("Invalid response format");
         if (operatorsData.length === 0) {
           toast({
             title: "⚠️ No Operators Available",
@@ -181,100 +337,78 @@ const ElectricityBillPayment = () => {
             variant: "destructive",
           });
         }
-        
         setOperators(operatorsData);
         setFilteredOperators(operatorsData);
       } catch (error: any) {
-        console.error("Error fetching operators:", error);
         setOperators([]);
         setFilteredOperators([]);
-        
         let errorMessage = "Unable to load electricity operators. Please try again.";
-        
-        if (!navigator.onLine) {
-          errorMessage = "No internet connection. Please check your network and try again.";
-        } else if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-          errorMessage = "Request timed out. Please check your connection and try again.";
-        } else if (error.response?.status === 401) {
-          errorMessage = "Your session has expired. Please log in again.";
-        } else if (error.response?.status === 500) {
-          errorMessage = "Server error. Our team has been notified. Please try again later.";
-        }
-        
-        toast({
-          title: "❌ Failed to Load Operators",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        if (!navigator.onLine) errorMessage = "No internet connection. Please check your network and try again.";
+        else if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) errorMessage = "Request timed out. Please check your connection and try again.";
+        else if (error.response?.status === 401) errorMessage = "Your session has expired. Please log in again.";
+        else if (error.response?.status === 500) errorMessage = "Server error. Our team has been notified. Please try again later.";
+        toast({ title: "❌ Failed to Load Operators", description: errorMessage, variant: "destructive" });
       } finally {
         setIsLoadingOperators(false);
       }
     };
-
     fetchOperators();
   }, [toast]);
 
-  // Filter operators based on search query
+  // ── Filter operators ──
   useEffect(() => {
     if (operatorSearchQuery.trim() === "") {
       setFilteredOperators(operators);
     } else {
-      const filtered = operators.filter((operator) =>
-        operator.operator_name
-          .toLowerCase()
-          .includes(operatorSearchQuery.toLowerCase())
+      setFilteredOperators(
+        operators.filter((op) =>
+          op.operator_name.toLowerCase().includes(operatorSearchQuery.toLowerCase())
+        )
       );
-      setFilteredOperators(filtered);
     }
   }, [operatorSearchQuery, operators]);
 
-  // Fetch payment history
-  const fetchPaymentHistory = async () => {
-    if (!retailerId) {
-      return;
+  // ── Success animation → open receipt tab after 3.5 s ──
+  useEffect(() => {
+    if (showSuccessAnimation && transactionId) {
+      const timer = setTimeout(() => {
+        setShowSuccessAnimation(false);
+        if (pendingReceiptData) {
+          const tab = window.open("", "_blank");
+          if (tab) writeReceiptToTab(tab, pendingReceiptData);
+          setPendingReceiptData(null);
+        }
+      }, 3500);
+      return () => clearTimeout(timer);
     }
+  }, [showSuccessAnimation, transactionId, pendingReceiptData]);
 
+  // ── Fetch payment history ──
+  const fetchPaymentHistory = async () => {
+    if (!retailerId) return;
     setIsLoadingHistory(true);
-    
     try {
-      const url = `${API_BASE_URL}/bbps/get/electricity/transactions/${retailerId}`;
-      const response = await axios.get(url, getAuthHeaders());
-      
+      const response = await axios.get(
+        `${API_BASE_URL}/bbps/get/electricity/transactions/${retailerId}`,
+        getAuthHeaders()
+      );
       const historyData = response.data?.data?.transactions || [];
-      
-      if (!Array.isArray(historyData)) {
-        throw new Error("Invalid response format");
-      }
-      
+      if (!Array.isArray(historyData)) throw new Error("Invalid response format");
       setPaymentHistory(historyData);
-      
-      // Show success message only if there's history
       if (historyData.length > 0) {
         toast({
           title: "✓ History Loaded",
-          description: `Found ${historyData.length} recent payment${historyData.length > 1 ? 's' : ''}`,
+          description: `Found ${historyData.length} recent payment${historyData.length > 1 ? "s" : ""}`,
         });
       }
     } catch (error: any) {
-      console.error("Error fetching payment history:", error);
       setPaymentHistory([]);
-      
       if (error.response?.status !== 404) {
         let errorMessage = "Unable to load your payment history.";
-        
-        if (!navigator.onLine) {
-          errorMessage = "No internet connection. Please check your network.";
-        } else if (error.response?.status === 401) {
-          errorMessage = "Your session has expired. Please log in again.";
-        } else if (error.response?.status === 500) {
-          errorMessage = "Server error. Please try again later.";
-        }
-        
-        toast({
-          title: "⚠️ History Load Failed",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        if (!navigator.onLine) errorMessage = "No internet connection. Please check your network.";
+        else if (error.response?.status === 401) errorMessage = "Your session has expired. Please log in again.";
+        else if (error.response?.status === 500) errorMessage = "Server error. Please try again later.";
+        toast({ title: "⚠️ History Load Failed", description: errorMessage, variant: "destructive" });
       }
     } finally {
       setIsLoadingHistory(false);
@@ -282,72 +416,37 @@ const ElectricityBillPayment = () => {
   };
 
   useEffect(() => {
-    if (retailerId) {
-      fetchPaymentHistory();
-    }
+    if (retailerId) fetchPaymentHistory();
   }, [retailerId]);
 
-  // Handle operator change
+  // ── Operator change ──
   const handleOperatorChange = (value: string) => {
     const selectedOperator = operators.find(
       (op) => op.operator_code.toString() === value
     );
-    
     if (selectedOperator) {
-      setPaymentForm({
-        ...paymentForm,
-        operatorCode: value,
-        operatorName: selectedOperator.operator_name,
-      });
-      
-      // Reset bill amount and details when operator changes
+      setPaymentForm({ ...paymentForm, operatorCode: value, operatorName: selectedOperator.operator_name });
       setBillAmount(null);
       setBillDetails(null);
-      
-      toast({
-        title: "✓ Operator Selected",
-        description: `${selectedOperator.operator_name} selected`,
-      });
+      toast({ title: "✓ Operator Selected", description: `${selectedOperator.operator_name} selected` });
     }
   };
 
-  // Validate customer ID
-  const validateCustomerId = (id: string): boolean => {
-    return id.length >= 6 && id.length <= 20;
-  };
+  const validateCustomerId = (id: string) => id.length >= 6 && id.length <= 20;
+  const validateEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  // Validate email
-  const validateEmail = (email: string): boolean => {
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    return emailRegex.test(email);
-  };
-
-  // Fetch bill amount
+  // ── Fetch bill ──
   const handleFetchBill = async () => {
     if (!paymentForm.customerId) {
-      toast({
-        title: "⚠️ Customer ID Required",
-        description: "Please enter your customer ID or consumer number",
-        variant: "destructive",
-      });
+      toast({ title: "⚠️ Customer ID Required", description: "Please enter your customer ID or consumer number", variant: "destructive" });
       return;
     }
-
     if (!validateCustomerId(paymentForm.customerId)) {
-      toast({
-        title: "⚠️ Invalid Customer ID",
-        description: "Customer ID must be between 6 and 20 characters",
-        variant: "destructive",
-      });
+      toast({ title: "⚠️ Invalid Customer ID", description: "Customer ID must be between 6 and 20 characters", variant: "destructive" });
       return;
     }
-
     if (!paymentForm.operatorCode) {
-      toast({
-        title: "⚠️ Operator Not Selected",
-        description: "Please select your electricity operator before fetching bill",
-        variant: "destructive",
-      });
+      toast({ title: "⚠️ Operator Not Selected", description: "Please select your electricity operator before fetching bill", variant: "destructive" });
       return;
     }
 
@@ -356,24 +455,15 @@ const ElectricityBillPayment = () => {
     setBillDetails(null);
 
     try {
-      const requestBody = {
-        customer_id: paymentForm.customerId,
-        operator_code: parseInt(paymentForm.operatorCode),
-      };
-
       const response = await axios.post(
         `${API_BASE_URL}/bbps/get/electricity/balance`,
-        requestBody,
+        { customer_id: paymentForm.customerId, operator_code: parseInt(paymentForm.operatorCode) },
         getAuthHeaders()
       );
-
       const apiResponse = response.data?.data?.response;
-
       if (apiResponse?.status === 1 && apiResponse?.billAmount) {
         const billData = apiResponse.billAmount;
         const amount = parseFloat(billData.billAmount);
-        
-        // Set bill amount and details
         setBillAmount(amount);
         setBillDetails({
           billAmount: billData.billAmount,
@@ -382,282 +472,146 @@ const ElectricityBillPayment = () => {
           consumerName: billData.consumerName || "",
           dueDate: billData.dueDate || "",
         });
-        
-        // Update form amount
-        setPaymentForm({
-          ...paymentForm,
-          amount: amount.toString(),
-        });
-        
-        // Show dialog with bill details
+        setPaymentForm({ ...paymentForm, amount: amount.toString() });
         setIsBillDialogOpen(true);
-        
         toast({
           title: "✓ Bill Fetched Successfully",
-          description: `Bill for ${billData.consumerName || paymentForm.customerId}: ₹${amount.toLocaleString('en-IN')}${billData.dueDate ? ` • Due: ${new Date(billData.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'short' })}` : ''}`,
+          description: `Bill for ${billData.consumerName || paymentForm.customerId}: ₹${amount.toLocaleString("en-IN")}${billData.dueDate ? ` • Due: ${new Date(billData.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short" })}` : ""}`,
         });
       } else {
-        const apiMessage = apiResponse?.msg || "Unable to fetch bill details";
-        toast({
-          title: "⚠️ Bill Not Found",
-          description: `${apiMessage}. Please verify your customer ID and operator.`,
-          variant: "destructive",
-        });
+        toast({ title: "⚠️ Bill Not Found", description: `${apiResponse?.msg || "Unable to fetch bill details"}. Please verify your customer ID and operator.`, variant: "destructive" });
       }
     } catch (error: any) {
-      console.error("Error fetching bill:", error);
-      
       let errorTitle = "❌ Failed to Fetch Bill";
       let errorMessage = "Unable to retrieve bill details. Please try again.";
-      
-      if (!navigator.onLine) {
-        errorTitle = "📡 No Internet Connection";
-        errorMessage = "Please check your internet connection and try again.";
-      } else if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-        errorTitle = "⏱️ Request Timeout";
-        errorMessage = "The request took too long. Please check your connection and try again.";
-      } else if (error.response?.status === 400) {
-        errorTitle = "⚠️ Invalid Request";
-        errorMessage = "The customer ID or operator combination is invalid. Please verify and try again.";
-      } else if (error.response?.status === 401) {
-        errorTitle = "🔒 Session Expired";
-        errorMessage = "Your session has expired. Please log in again.";
-      } else if (error.response?.status === 404) {
-        errorTitle = "📄 No Bill Found";
-        errorMessage = "No pending electricity bill found for this customer ID. Please verify your details.";
-      } else if (error.response?.status === 500) {
-        errorTitle = "⚠️ Server Error";
-        errorMessage = "Our server encountered an error. Our team has been notified. Please try again later.";
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.response?.data?.data?.response?.msg) {
-        errorMessage = error.response.data.data.response.msg;
-      }
-      
-      toast({
-        title: errorTitle,
-        description: errorMessage,
-        variant: "destructive",
-      });
+      if (!navigator.onLine) { errorTitle = "📡 No Internet Connection"; errorMessage = "Please check your internet connection and try again."; }
+      else if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) { errorTitle = "⏱️ Request Timeout"; errorMessage = "The request took too long. Please check your connection and try again."; }
+      else if (error.response?.status === 400) { errorTitle = "⚠️ Invalid Request"; errorMessage = "The customer ID or operator combination is invalid. Please verify and try again."; }
+      else if (error.response?.status === 401) { errorTitle = "🔒 Session Expired"; errorMessage = "Your session has expired. Please log in again."; }
+      else if (error.response?.status === 404) { errorTitle = "📄 No Bill Found"; errorMessage = "No pending electricity bill found for this customer ID. Please verify your details."; }
+      else if (error.response?.status === 500) { errorTitle = "⚠️ Server Error"; errorMessage = "Our server encountered an error. Our team has been notified. Please try again later."; }
+      else if (error.response?.data?.message) { errorMessage = error.response.data.message; }
+      else if (error.response?.data?.data?.response?.msg) { errorMessage = error.response.data.data.response.msg; }
+      toast({ title: errorTitle, description: errorMessage, variant: "destructive" });
     } finally {
       setIsFetchingBill(false);
     }
   };
 
-  // Handle payment submission
+  // ── Payment submit ──
   const handlePaymentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (!retailerId) {
-      toast({
-        title: "⚠️ Session Error",
-        description: "Your session has expired. Please log in again to continue.",
-        variant: "destructive",
-      });
+      toast({ title: "⚠️ Session Error", description: "Your session has expired. Please log in again to continue.", variant: "destructive" });
       navigate("/login");
       return;
     }
-
-    // Comprehensive validation
-    if (!paymentForm.customerId) {
-      toast({
-        title: "⚠️ Customer ID Required",
-        description: "Please enter your customer ID or consumer number",
-        variant: "destructive",
-      });
+    if (!paymentForm.customerId || !validateCustomerId(paymentForm.customerId)) {
+      toast({ title: "⚠️ Invalid Customer ID", description: "Customer ID must be between 6 and 20 characters", variant: "destructive" });
       return;
     }
-
-    if (!validateCustomerId(paymentForm.customerId)) {
-      toast({
-        title: "⚠️ Invalid Customer ID",
-        description: "Customer ID must be between 6 and 20 characters",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (!paymentForm.operatorCode) {
-      toast({
-        title: "⚠️ Operator Not Selected",
-        description: "Please select your electricity operator",
-        variant: "destructive",
-      });
+      toast({ title: "⚠️ Operator Not Selected", description: "Please select your electricity operator", variant: "destructive" });
       return;
     }
-
-    if (!paymentForm.customerEmail) {
-      toast({
-        title: "⚠️ Email Required",
-        description: "Please enter your email address for payment confirmation",
-        variant: "destructive",
-      });
+    if (!paymentForm.customerEmail || !validateEmail(paymentForm.customerEmail)) {
+      toast({ title: "⚠️ Invalid Email", description: "Please enter a valid email address (e.g., name@example.com)", variant: "destructive" });
       return;
     }
-
-    if (!validateEmail(paymentForm.customerEmail)) {
-      toast({
-        title: "⚠️ Invalid Email",
-        description: "Please enter a valid email address (e.g., name@example.com)",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!paymentForm.amount) {
-      toast({
-        title: "⚠️ Amount Required",
-        description: "Please enter the payment amount",
-        variant: "destructive",
-      });
-      return;
-    }
-
     const amount = parseFloat(paymentForm.amount);
-    if (isNaN(amount) || amount <= 0) {
-      toast({
-        title: "⚠️ Invalid Amount",
-        description: "Please enter a valid payment amount greater than ₹0",
-        variant: "destructive",
-      });
+    if (!paymentForm.amount || isNaN(amount) || amount <= 0) {
+      toast({ title: "⚠️ Invalid Amount", description: "Please enter a valid payment amount greater than ₹0", variant: "destructive" });
       return;
     }
-
-    if (amount < 1) {
-      toast({
-        title: "⚠️ Amount Too Low",
-        description: "Minimum payment amount is ₹1",
-        variant: "destructive",
-      });
-      return;
-    }
-
     if (amount > 100000) {
-      toast({
-        title: "⚠️ Amount Too High",
-        description: "Maximum payment amount is ₹1,00,000 per transaction",
-        variant: "destructive",
-      });
+      toast({ title: "⚠️ Amount Too High", description: "Maximum payment amount is ₹1,00,000 per transaction", variant: "destructive" });
       return;
     }
 
     setIsLoading(true);
 
     try {
-      const requestBody = {
-        retailer_id: retailerId,
-        customer_id: paymentForm.customerId,
-        customer_email: paymentForm.customerEmail,
-        operator_name: paymentForm.operatorName,
-        operator_code: parseInt(paymentForm.operatorCode),
-        amount: amount,
-      };
-
       const response = await axios.post(
         `${API_BASE_URL}/bbps/create/electricity`,
-        requestBody,
+        {
+          retailer_id: retailerId,
+          customer_id: paymentForm.customerId,
+          customer_email: paymentForm.customerEmail,
+          operator_name: paymentForm.operatorName,
+          operator_code: parseInt(paymentForm.operatorCode),
+          amount,
+        },
         getAuthHeaders()
       );
 
       if (response.status === 200 || response.status === 201) {
-        const responseMessage = response.data?.message || "Electricity bill paid successfully";
-        
+        const orderId =
+          response.data?.data?.order_id ||
+          response.data?.data?.orderId ||
+          response.data?.data?.transaction_id ||
+          Date.now().toString();
+
+        // Capture receipt data before clearing the form
+        const receiptData: ElectricityReceiptData = {
+          customerId: paymentForm.customerId,
+          consumerName: billDetails?.consumerName || "",
+          operatorName: paymentForm.operatorName,
+          customerEmail: paymentForm.customerEmail,
+          amount,
+          orderId,
+          status: "SUCCESS",
+          createdAt: new Date().toISOString(),
+        };
+
+        // Show success animation; receipt tab opens after animation fades (3.5 s)
+        setTransactionId(orderId);
+        setShowSuccessAnimation(true);
+        setPendingReceiptData(receiptData);
+
         toast({
           title: "🎉 Payment Successful!",
-          description: `₹${amount.toLocaleString('en-IN')} paid successfully for ${paymentForm.customerId} (${paymentForm.operatorName})`,
+          description: `₹${amount.toLocaleString("en-IN")} paid successfully for ${paymentForm.customerId} (${paymentForm.operatorName})`,
         });
 
         // Reset form
-        setPaymentForm({
-          customerId: "",
-          customerEmail: "",
-          operatorCode: "",
-          operatorName: "",
-          amount: "",
-        });
+        setPaymentForm({ customerId: "", customerEmail: "", operatorCode: "", operatorName: "", amount: "" });
         setBillAmount(null);
         setBillDetails(null);
 
-        // Refresh history
         fetchPaymentHistory();
       }
     } catch (error: any) {
-      console.error("Payment error:", error);
-
       let errorTitle = "❌ Payment Failed";
       let errorMessage = "Unable to process your payment. Please try again.";
-
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      } else if (error.response?.status === 400) {
-        errorTitle = "⚠️ Invalid Request";
-        errorMessage = "The payment information provided is invalid. Please check and try again.";
-      } else if (error.response?.status === 401) {
-        errorTitle = "🔒 Session Expired";
-        errorMessage = "Your session has expired. Please log in again to continue.";
-      } else if (error.response?.status === 402) {
-        errorTitle = "💰 Insufficient Balance";
-        errorMessage = "You don't have enough balance to complete this payment. Please add funds to your wallet.";
-      } else if (error.response?.status === 403) {
-        errorTitle = "🚫 Access Denied";
-        errorMessage = "You don't have permission to perform this payment.";
-      } else if (error.response?.status === 404) {
-        errorTitle = "⚠️ Service Not Found";
-        errorMessage = "The payment service is temporarily unavailable. Please try again later.";
-      } else if (error.response?.status === 500) {
-        errorTitle = "⚠️ Server Error";
-        errorMessage = "Our server encountered an error. Our team has been notified. Please try again later.";
-      } else if (error.response?.status === 503) {
-        errorTitle = "⚠️ Service Unavailable";
-        errorMessage = "The payment service is temporarily down for maintenance. Please try again in a few minutes.";
-      } else if (!navigator.onLine) {
-        errorTitle = "📡 No Internet Connection";
-        errorMessage = "Please check your internet connection and try again.";
-      } else if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) {
-        errorTitle = "⏱️ Request Timeout";
-        errorMessage = "The request took too long. Please check your connection and try again.";
-      }
-
-      toast({
-        title: errorTitle,
-        description: errorMessage,
-        variant: "destructive",
-      });
+      if (error.response?.data?.message) errorMessage = error.response.data.message;
+      else if (error.response?.status === 400) { errorTitle = "⚠️ Invalid Request"; errorMessage = "The payment information provided is invalid. Please check and try again."; }
+      else if (error.response?.status === 401) { errorTitle = "🔒 Session Expired"; errorMessage = "Your session has expired. Please log in again to continue."; }
+      else if (error.response?.status === 402) { errorTitle = "💰 Insufficient Balance"; errorMessage = "You don't have enough balance to complete this payment. Please add funds to your wallet."; }
+      else if (error.response?.status === 403) { errorTitle = "🚫 Access Denied"; errorMessage = "You don't have permission to perform this payment."; }
+      else if (error.response?.status === 404) { errorTitle = "⚠️ Service Not Found"; errorMessage = "The payment service is temporarily unavailable. Please try again later."; }
+      else if (error.response?.status === 500) { errorTitle = "⚠️ Server Error"; errorMessage = "Our server encountered an error. Our team has been notified. Please try again later."; }
+      else if (error.response?.status === 503) { errorTitle = "⚠️ Service Unavailable"; errorMessage = "The payment service is temporarily down for maintenance. Please try again in a few minutes."; }
+      else if (!navigator.onLine) { errorTitle = "📡 No Internet Connection"; errorMessage = "Please check your internet connection and try again."; }
+      else if (error.code === "ECONNABORTED" || error.message?.includes("timeout")) { errorTitle = "⏱️ Request Timeout"; errorMessage = "The request took too long. Please check your connection and try again."; }
+      toast({ title: errorTitle, description: errorMessage, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Get status badge color
   const getStatusBadge = (status: string) => {
-    const normalizedStatus = status.toLowerCase();
-    
-    if (normalizedStatus === "success" || normalizedStatus === "completed") {
-      return (
-        <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20">
-          <CheckCircle2 className="w-3 h-3 mr-1" />
-          Success
-        </Badge>
-      );
-    } else if (normalizedStatus === "pending" || normalizedStatus === "processing") {
-      return (
-        <Badge className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20">
-          <RefreshCw className="w-3 h-3 mr-1" />
-          Pending
-        </Badge>
-      );
-    } else if (normalizedStatus === "failed" || normalizedStatus === "failure") {
-      return (
-        <Badge className="bg-red-500/10 text-red-600 hover:bg-red-500/20">
-          <AlertCircle className="w-3 h-3 mr-1" />
-          Failed
-        </Badge>
-      );
-    } else {
-      return <Badge variant="outline">{status}</Badge>;
-    }
+    const s = status.toLowerCase();
+    if (s === "success" || s === "completed")
+      return <Badge className="bg-green-500/10 text-green-600 hover:bg-green-500/20"><CheckCircle2 className="w-3 h-3 mr-1" />Success</Badge>;
+    if (s === "pending" || s === "processing")
+      return <Badge className="bg-amber-500/10 text-amber-600 hover:bg-amber-500/20"><RefreshCw className="w-3 h-3 mr-1" />Pending</Badge>;
+    if (s === "failed" || s === "failure")
+      return <Badge className="bg-red-500/10 text-red-600 hover:bg-red-500/20"><AlertCircle className="w-3 h-3 mr-1" />Failed</Badge>;
+    return <Badge variant="outline">{status}</Badge>;
   };
 
+  // ─────────────────────────────────────────────────────────────────────────────
   return (
     <div className="flex min-h-screen w-full bg-background">
       <AppSidebar />
@@ -667,36 +621,27 @@ const ElectricityBillPayment = () => {
 
         <div className="flex-1 p-6 overflow-y-auto">
           <div className="max-w-6xl mx-auto space-y-8">
-            {/* Back Button */}
-            <Button
-              variant="ghost"
-              onClick={() => navigate("/bbps")}
-              className="gap-2 hover:bg-muted/50"
-            >
+            {/* Back */}
+            <Button variant="ghost" onClick={() => navigate("/bbps")} className="gap-2 hover:bg-muted/50">
               <ArrowLeft className="w-4 h-4" />
               Back to BBPS
             </Button>
 
-            {/* Electricity Bill Payment Card */}
+            {/* Payment Card */}
             <Card className="shadow-lg border-border/50">
               <CardHeader className="paybazaar-gradient text-white rounded-t-xl space-y-1 pb-6">
                 <CardTitle className="flex items-center gap-2 text-xl">
                   <Zap className="w-5 h-5" />
                   Electricity Bill Payment
                 </CardTitle>
-                <p className="text-sm text-white/90">
-                  Pay your electricity bills instantly for all major providers
-                </p>
+                <p className="text-sm text-white/90">Pay your electricity bills instantly for all major providers</p>
               </CardHeader>
 
               <CardContent className="pt-6 pb-8 px-6">
                 <form onSubmit={handlePaymentSubmit} className="space-y-6">
                   {/* Customer ID */}
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="customerId"
-                      className="text-sm font-medium text-foreground"
-                    >
+                    <Label htmlFor="customerId" className="text-sm font-medium text-foreground">
                       Customer ID / Consumer Number <span className="text-red-500">*</span>
                     </Label>
                     <Input
@@ -707,11 +652,7 @@ const ElectricityBillPayment = () => {
                       onChange={(e) => {
                         const value = e.target.value.toUpperCase();
                         if (value.length <= 20) {
-                          setPaymentForm({
-                            ...paymentForm,
-                            customerId: value,
-                          });
-                          // Reset bill amount and details when customer ID changes
+                          setPaymentForm({ ...paymentForm, customerId: value });
                           setBillAmount(null);
                           setBillDetails(null);
                         }
@@ -721,41 +662,27 @@ const ElectricityBillPayment = () => {
                       disabled={isLoading}
                       className="h-12 text-base"
                     />
-                    {paymentForm.customerId.length > 0 &&
-                      paymentForm.customerId.length < 6 && (
-                        <p className="text-xs text-amber-600 flex items-center gap-1">
-                          <AlertTriangle className="w-3 h-3" />
-                          {6 - paymentForm.customerId.length} more character{6 - paymentForm.customerId.length > 1 ? 's' : ''} required (minimum 6)
-                        </p>
-                      )}
-                    {paymentForm.customerId.length >= 6 && (
-                      <p className="text-xs text-green-600 flex items-center gap-1">
-                        <CheckCircle2 className="w-3 h-3" />
-                        Valid customer ID
+                    {paymentForm.customerId.length > 0 && paymentForm.customerId.length < 6 && (
+                      <p className="text-xs text-amber-600 flex items-center gap-1">
+                        <AlertTriangle className="w-3 h-3" />
+                        {6 - paymentForm.customerId.length} more character{6 - paymentForm.customerId.length > 1 ? "s" : ""} required (minimum 6)
                       </p>
+                    )}
+                    {paymentForm.customerId.length >= 6 && (
+                      <p className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Valid customer ID</p>
                     )}
                   </div>
 
                   {/* Operator */}
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="operator"
-                      className="text-sm font-medium text-foreground"
-                    >
+                    <Label htmlFor="operator" className="text-sm font-medium text-foreground">
                       Electricity Operator <span className="text-red-500">*</span>
                     </Label>
-
-                    <Select
-                      value={paymentForm.operatorCode}
-                      onValueChange={handleOperatorChange}
-                      disabled={isLoading || isLoadingOperators}
-                      required
-                    >
+                    <Select value={paymentForm.operatorCode} onValueChange={handleOperatorChange} disabled={isLoading || isLoadingOperators} required>
                       <SelectTrigger className="h-12">
                         <SelectValue placeholder={isLoadingOperators ? "Loading operators..." : "Select your electricity provider"} />
                       </SelectTrigger>
                       <SelectContent>
-                        {/* Search Input Inside Dropdown */}
                         <div className="sticky top-0 bg-background z-10 p-2 border-b">
                           <div className="relative">
                             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -763,30 +690,18 @@ const ElectricityBillPayment = () => {
                               type="text"
                               placeholder="Search operators..."
                               value={operatorSearchQuery}
-                              onChange={(e) => {
-                                e.stopPropagation();
-                                setOperatorSearchQuery(e.target.value);
-                              }}
+                              onChange={(e) => { e.stopPropagation(); setOperatorSearchQuery(e.target.value); }}
                               onClick={(e) => e.stopPropagation()}
                               onKeyDown={(e) => e.stopPropagation()}
                               className="h-9 pl-9 pr-9"
                             />
                             {operatorSearchQuery && (
-                              <button
-                                type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setOperatorSearchQuery("");
-                                }}
-                                className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                              >
+                              <button type="button" onClick={(e) => { e.stopPropagation(); setOperatorSearchQuery(""); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                                 <X className="w-3 h-3" />
                               </button>
                             )}
                           </div>
                         </div>
-
-                        {/* Operators List */}
                         <div className="max-h-[300px] overflow-y-auto">
                           {isLoadingOperators ? (
                             <div className="py-8 flex flex-col items-center justify-center text-muted-foreground">
@@ -794,13 +709,8 @@ const ElectricityBillPayment = () => {
                               <p className="text-sm">Loading operators...</p>
                             </div>
                           ) : Array.isArray(filteredOperators) && filteredOperators.length > 0 ? (
-                            filteredOperators.map((operator) => (
-                              <SelectItem
-                                key={operator.operator_code}
-                                value={operator.operator_code.toString()}
-                              >
-                                {operator.operator_name}
-                              </SelectItem>
+                            filteredOperators.map((op) => (
+                              <SelectItem key={op.operator_code} value={op.operator_code.toString()}>{op.operator_name}</SelectItem>
                             ))
                           ) : operatorSearchQuery ? (
                             <div className="py-6 text-center text-sm text-muted-foreground">
@@ -814,8 +724,6 @@ const ElectricityBillPayment = () => {
                             </div>
                           )}
                         </div>
-
-                        {/* Results Count */}
                         {operatorSearchQuery && filteredOperators.length > 0 && (
                           <div className="sticky bottom-0 bg-background border-t p-2 text-xs text-center text-muted-foreground">
                             Showing {filteredOperators.length} of {operators.length} operators
@@ -827,28 +735,19 @@ const ElectricityBillPayment = () => {
 
                   {/* Fetch Bill Button */}
                   {paymentForm.customerId && paymentForm.operatorCode && (
-                    <div>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        onClick={handleFetchBill}
-                        disabled={isFetchingBill || isLoading || !validateCustomerId(paymentForm.customerId)}
-                        className="w-full h-12"
-                        title={!validateCustomerId(paymentForm.customerId) ? "Customer ID must be 6-20 characters" : "Fetch your electricity bill details"}
-                      >
-                        {isFetchingBill ? (
-                          <span className="flex items-center gap-2">
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Fetching Bill Details...
-                          </span>
-                        ) : (
-                          <>
-                            <FileText className="w-4 h-4 mr-2" />
-                            Fetch Bill Amount
-                          </>
-                        )}
-                      </Button>
-                    </div>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleFetchBill}
+                      disabled={isFetchingBill || isLoading || !validateCustomerId(paymentForm.customerId)}
+                      className="w-full h-12"
+                    >
+                      {isFetchingBill ? (
+                        <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Fetching Bill Details...</span>
+                      ) : (
+                        <><FileText className="w-4 h-4 mr-2" />Fetch Bill Amount</>
+                      )}
+                    </Button>
                   )}
 
                   {/* Bill Amount Display */}
@@ -859,29 +758,22 @@ const ElectricityBillPayment = () => {
                           <div className="p-2 rounded-full bg-green-500/10">
                             <CheckCircle2 className="w-5 h-5 text-green-600 dark:text-green-400" />
                           </div>
-                          <span className="text-sm font-semibold text-green-800 dark:text-green-200">
-                            Current Bill Amount
-                          </span>
+                          <span className="text-sm font-semibold text-green-800 dark:text-green-200">Current Bill Amount</span>
                         </div>
-                        <span className="text-3xl font-bold text-green-600 dark:text-green-400">
-                          ₹{billAmount.toLocaleString('en-IN')}
-                        </span>
+                        <span className="text-3xl font-bold text-green-600 dark:text-green-400">₹{billAmount.toLocaleString("en-IN")}</span>
                       </div>
                       {billDetails?.dueDate && (
                         <p className="text-xs text-green-700 dark:text-green-300 mt-2 flex items-center gap-1">
                           <AlertCircle className="w-3 h-3" />
-                          Due Date: {new Date(billDetails.dueDate).toLocaleDateString('en-IN', { day: '2-digit', month: 'long', year: 'numeric' })}
+                          Due Date: {new Date(billDetails.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "long", year: "numeric" })}
                         </p>
                       )}
                     </div>
                   )}
 
-                  {/* Customer Email */}
+                  {/* Email */}
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="customerEmail"
-                      className="text-sm font-medium text-foreground"
-                    >
+                    <Label htmlFor="customerEmail" className="text-sm font-medium text-foreground">
                       Customer Email <span className="text-red-500">*</span>
                     </Label>
                     <Input
@@ -889,55 +781,32 @@ const ElectricityBillPayment = () => {
                       type="email"
                       placeholder="Enter your email for payment confirmation"
                       value={paymentForm.customerEmail}
-                      onChange={(e) =>
-                        setPaymentForm({
-                          ...paymentForm,
-                          customerEmail: e.target.value,
-                        })
-                      }
+                      onChange={(e) => setPaymentForm({ ...paymentForm, customerEmail: e.target.value })}
                       required
                       disabled={isLoading}
                       className="h-12 text-base"
                     />
-                    {paymentForm.customerEmail.length > 0 &&
-                      !validateEmail(paymentForm.customerEmail) && (
-                        <p className="text-xs text-red-600 flex items-center gap-1">
-                          <AlertCircle className="w-3 h-3" />
-                          Please enter a valid email address (e.g., name@example.com)
-                        </p>
-                      )}
-                    {paymentForm.customerEmail.length > 0 &&
-                      validateEmail(paymentForm.customerEmail) && (
-                        <p className="text-xs text-green-600 flex items-center gap-1">
-                          <CheckCircle2 className="w-3 h-3" />
-                          Valid email address
-                        </p>
-                      )}
+                    {paymentForm.customerEmail.length > 0 && !validateEmail(paymentForm.customerEmail) && (
+                      <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" />Please enter a valid email address (e.g., name@example.com)</p>
+                    )}
+                    {paymentForm.customerEmail.length > 0 && validateEmail(paymentForm.customerEmail) && (
+                      <p className="text-xs text-green-600 flex items-center gap-1"><CheckCircle2 className="w-3 h-3" />Valid email address</p>
+                    )}
                   </div>
 
                   {/* Amount */}
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="amount"
-                      className="text-sm font-medium text-foreground"
-                    >
+                    <Label htmlFor="amount" className="text-sm font-medium text-foreground">
                       Payment Amount <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
-                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">
-                        ₹
-                      </span>
+                      <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground font-medium">₹</span>
                       <Input
                         id="amount"
                         type="number"
                         placeholder={billAmount ? "Amount auto-filled from bill" : "Enter payment amount"}
                         value={paymentForm.amount}
-                        onChange={(e) =>
-                          setPaymentForm({
-                            ...paymentForm,
-                            amount: e.target.value,
-                          })
-                        }
+                        onChange={(e) => setPaymentForm({ ...paymentForm, amount: e.target.value })}
                         min="1"
                         max="100000"
                         step="0.01"
@@ -948,23 +817,19 @@ const ElectricityBillPayment = () => {
                     </div>
                     {parseFloat(paymentForm.amount) > 0 && parseFloat(paymentForm.amount) <= 100000 && (
                       <p className="text-xs text-muted-foreground">
-                        Paying ₹{parseFloat(paymentForm.amount).toLocaleString('en-IN')}
+                        Paying ₹{parseFloat(paymentForm.amount).toLocaleString("en-IN")}
                         {billAmount && parseFloat(paymentForm.amount) === billAmount && " (Full bill amount)"}
                       </p>
                     )}
                     {parseFloat(paymentForm.amount) > 100000 && (
-                      <p className="text-xs text-red-600 flex items-center gap-1">
-                        <AlertCircle className="w-3 h-3" />
-                        Maximum payment amount is ₹1,00,000 per transaction
-                      </p>
+                      <p className="text-xs text-red-600 flex items-center gap-1"><AlertCircle className="w-3 h-3" />Maximum payment amount is ₹1,00,000 per transaction</p>
                     )}
                   </div>
 
-                  {/* Information Box */}
+                  {/* Info box */}
                   <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg p-4 space-y-2">
                     <p className="text-sm font-semibold text-blue-900 dark:text-blue-100 flex items-center gap-2">
-                      <AlertCircle className="w-4 h-4" />
-                      Important Information
+                      <AlertCircle className="w-4 h-4" />Important Information
                     </p>
                     <ul className="text-sm text-blue-800 dark:text-blue-200 space-y-1.5 list-disc list-inside ml-1">
                       <li>Ensure you have sufficient balance in your wallet</li>
@@ -972,11 +837,11 @@ const ElectricityBillPayment = () => {
                       <li>Double-check customer ID and operator before submitting</li>
                       <li>Completed transactions cannot be reversed or cancelled</li>
                       <li>You will receive a confirmation email after payment</li>
-                      <li>Contact support immediately if you face any issues</li>
+                      <li>A receipt will automatically open in a new tab on success</li>
                     </ul>
                   </div>
 
-                  {/* Submit Button */}
+                  {/* Submit */}
                   <Button
                     type="submit"
                     size="lg"
@@ -991,22 +856,16 @@ const ElectricityBillPayment = () => {
                     className="w-full paybazaar-gradient text-white hover:opacity-90 transition-opacity h-12 text-base font-medium disabled:opacity-50"
                   >
                     {isLoading ? (
-                      <span className="flex items-center gap-2">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Processing Your Payment...
-                      </span>
+                      <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 animate-spin" />Processing Your Payment...</span>
                     ) : (
-                      <>
-                        <Zap className="w-4 h-4 mr-2" />
-                        Pay Bill ₹{paymentForm.amount || '0'} Now
-                      </>
+                      <><Zap className="w-4 h-4 mr-2" />Pay Bill ₹{paymentForm.amount || "0"} Now</>
                     )}
                   </Button>
                 </form>
               </CardContent>
             </Card>
 
-            {/* Payment History Card */}
+            {/* History Card */}
             <Card className="shadow-lg border-border/50">
               <CardHeader className="paybazaar-gradient text-white rounded-t-xl space-y-1 pb-6">
                 <CardTitle className="flex items-center justify-between">
@@ -1014,28 +873,12 @@ const ElectricityBillPayment = () => {
                     <RefreshCw className="w-5 h-5" />
                     Recent Payment History
                   </span>
-                  <Button
-                    variant="secondary"
-                    size="sm"
-                    onClick={fetchPaymentHistory}
-                    disabled={isLoadingHistory}
-                    title="Refresh payment history"
-                  >
-                    {isLoadingHistory ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <>
-                        <RefreshCw className="w-4 h-4 mr-1" />
-                        Refresh
-                      </>
-                    )}
+                  <Button variant="secondary" size="sm" onClick={fetchPaymentHistory} disabled={isLoadingHistory}>
+                    {isLoadingHistory ? <Loader2 className="w-4 h-4 animate-spin" /> : <><RefreshCw className="w-4 h-4 mr-1" />Refresh</>}
                   </Button>
                 </CardTitle>
-                <p className="text-sm text-white/90">
-                  View your last 10 electricity bill payments
-                </p>
+                <p className="text-sm text-white/90">View your last 10 electricity bill payments</p>
               </CardHeader>
-
               <CardContent className="pt-6">
                 {isLoadingHistory ? (
                   <div className="flex flex-col items-center justify-center py-12">
@@ -1047,63 +890,35 @@ const ElectricityBillPayment = () => {
                     <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-muted mb-4">
                       <Zap className="w-8 h-8 text-muted-foreground" />
                     </div>
-                    <p className="text-lg font-semibold text-foreground mb-2">
-                      No Payment History
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      Your electricity bill payments will appear here
-                    </p>
+                    <p className="text-lg font-semibold text-foreground mb-2">No Payment History</p>
+                    <p className="text-sm text-muted-foreground">Your electricity bill payments will appear here</p>
                   </div>
                 ) : (
                   <div className="space-y-3">
-                    {Array.isArray(paymentHistory) && paymentHistory.slice(0, 10).map((history) => (
-                      <div
-                        key={history.electricity_bill_transaction_id}
-                        className="border rounded-lg p-4 hover:bg-muted/50 transition-colors"
-                      >
+                    {paymentHistory.slice(0, 10).map((history) => (
+                      <div key={history.electricity_bill_transaction_id} className="border rounded-lg p-4 hover:bg-muted/50 transition-colors">
                         <div className="flex items-start justify-between">
                           <div className="space-y-1 flex-1">
                             <div className="flex items-center gap-2 flex-wrap">
-                              <p className="font-semibold text-base font-mono">
-                                {history.customer_id}
-                              </p>
+                              <p className="font-semibold text-base font-mono">{history.customer_id}</p>
                               {getStatusBadge(history.transaction_status)}
                             </div>
-                            <p className="text-sm text-muted-foreground">
-                              {history.operator_name}
-                            </p>
+                            <p className="text-sm text-muted-foreground">{history.operator_name}</p>
+                            <p className="text-xs text-muted-foreground">{history.customer_email}</p>
+                            {history.order_id && <p className="text-xs text-muted-foreground font-mono">Order: {history.order_id}</p>}
                             <p className="text-xs text-muted-foreground">
-                              {history.customer_email}
-                            </p>
-                            {history.order_id && (
-                              <p className="text-xs text-muted-foreground font-mono">
-                                Order: {history.order_id}
-                              </p>
-                            )}
-                            <p className="text-xs text-muted-foreground">
-                              {new Date(history.created_at).toLocaleString('en-IN', {
-                                day: 'numeric',
-                                month: 'short',
-                                year: 'numeric',
-                                hour: '2-digit',
-                                minute: '2-digit'
-                              })}
+                              {new Date(history.created_at).toLocaleString("en-IN", { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}
                             </p>
                           </div>
                           <div className="text-right space-y-1">
-                            <p className="font-bold text-lg text-primary">
-                              ₹{history.amount.toLocaleString('en-IN')}
-                            </p>
+                            <p className="font-bold text-lg text-primary">₹{history.amount.toLocaleString("en-IN")}</p>
                             {history.commision > 0 && (
                               <p className="text-xs text-green-600 flex items-center gap-1 justify-end">
-                                <CheckCircle2 className="w-3 h-3" />
-                                +₹{history.commision.toFixed(2)} earned
+                                <CheckCircle2 className="w-3 h-3" />+₹{history.commision.toFixed(2)} earned
                               </p>
                             )}
                             {history.before_balance > 0 && (
-                              <p className="text-xs text-muted-foreground">
-                                Balance: ₹{history.after_balance.toLocaleString('en-IN')}
-                              </p>
+                              <p className="text-xs text-muted-foreground">Balance: ₹{history.after_balance.toLocaleString("en-IN")}</p>
                             )}
                           </div>
                         </div>
@@ -1117,6 +932,46 @@ const ElectricityBillPayment = () => {
         </div>
       </div>
 
+      {/* ── Success animation overlay ── */}
+      {showSuccessAnimation && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
+          <div className="relative">
+            {/* Confetti particles */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              {[...Array(12)].map((_, i) => (
+                <div
+                  key={i}
+                  className="absolute w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full animate-ping"
+                  style={{
+                    animationDelay: `${i * 0.1}s`,
+                    animationDuration: "1.5s",
+                    left: `${50 + 40 * Math.cos((i * Math.PI * 2) / 12)}%`,
+                    top: `${50 + 40 * Math.sin((i * Math.PI * 2) / 12)}%`,
+                  }}
+                />
+              ))}
+            </div>
+            {/* Card */}
+            <div className="relative bg-white rounded-3xl shadow-2xl p-12 max-w-md mx-4 animate-scale-in">
+              <div className="relative mx-auto w-32 h-32 mb-6">
+                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse" />
+                <div className="absolute inset-2 rounded-full bg-white flex items-center justify-center">
+                  <CheckCircle2 className="w-20 h-20 text-green-500 animate-check-draw" strokeWidth={3} />
+                </div>
+              </div>
+              <div className="text-center space-y-3">
+                <h2 className="text-3xl font-bold text-gray-900">Payment Successful! 🎉</h2>
+                <p className="text-lg text-gray-600">Your electricity bill has been paid successfully</p>
+                {transactionId && (
+                  <p className="text-sm text-gray-500 font-mono">Transaction ID: {transactionId}</p>
+                )}
+                <p className="text-xs text-gray-400 mt-2">Your receipt will open in a new tab shortly…</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Bill Details Dialog */}
       <Dialog open={isBillDialogOpen} onOpenChange={setIsBillDialogOpen}>
         <DialogContent className="sm:max-w-md">
@@ -1127,106 +982,47 @@ const ElectricityBillPayment = () => {
               </div>
               Bill Details Retrieved
             </DialogTitle>
-            <DialogDescription>
-              Review your electricity bill details before payment
-            </DialogDescription>
+            <DialogDescription>Review your electricity bill details before payment</DialogDescription>
           </DialogHeader>
-          
           {billDetails && (
             <div className="space-y-4 py-4">
-              {/* Bill Amount - Highlighted */}
               <div className="bg-gradient-to-r from-green-50 to-emerald-50 dark:from-green-950/20 dark:to-emerald-950/20 border-2 border-green-200 dark:border-green-800 rounded-lg p-5">
                 <div className="flex items-center justify-between mb-1">
-                  <span className="text-sm font-medium text-green-800 dark:text-green-200">
-                    Bill Amount
-                  </span>
-                  <span className="text-3xl font-bold text-green-600 dark:text-green-400">
-                    ₹{parseFloat(billDetails.billAmount).toLocaleString('en-IN')}
-                  </span>
+                  <span className="text-sm font-medium text-green-800 dark:text-green-200">Bill Amount</span>
+                  <span className="text-3xl font-bold text-green-600 dark:text-green-400">₹{parseFloat(billDetails.billAmount).toLocaleString("en-IN")}</span>
                 </div>
-                <p className="text-xs text-green-700 dark:text-green-300 text-right">
-                  Amount auto-filled in payment form
-                </p>
+                <p className="text-xs text-green-700 dark:text-green-300 text-right">Amount auto-filled in payment form</p>
               </div>
-
-              {/* Other Details */}
               <div className="space-y-3">
                 {billDetails.consumerName && (
                   <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-sm font-medium text-muted-foreground">
-                      Consumer Name
-                    </span>
-                    <span className="text-sm font-semibold">
-                      {billDetails.consumerName}
-                    </span>
+                    <span className="text-sm font-medium text-muted-foreground">Consumer Name</span>
+                    <span className="text-sm font-semibold">{billDetails.consumerName}</span>
                   </div>
                 )}
-
                 <div className="flex justify-between items-center py-2 border-b">
-                  <span className="text-sm font-medium text-muted-foreground">
-                    Consumer ID
-                  </span>
-                  <span className="text-sm font-semibold font-mono">
-                    {billDetails.consumerId}
-                  </span>
+                  <span className="text-sm font-medium text-muted-foreground">Consumer ID</span>
+                  <span className="text-sm font-semibold font-mono">{billDetails.consumerId}</span>
                 </div>
-
                 {billDetails.billDate && (
                   <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-sm font-medium text-muted-foreground">
-                      Bill Date
-                    </span>
-                    <span className="text-sm font-semibold">
-                      {new Date(billDetails.billDate).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </span>
+                    <span className="text-sm font-medium text-muted-foreground">Bill Date</span>
+                    <span className="text-sm font-semibold">{new Date(billDetails.billDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
                   </div>
                 )}
-
                 {billDetails.dueDate && (
                   <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-sm font-medium text-muted-foreground">
-                      Due Date
-                    </span>
-                    <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">
-                      {new Date(billDetails.dueDate).toLocaleDateString('en-IN', {
-                        day: '2-digit',
-                        month: 'short',
-                        year: 'numeric'
-                      })}
-                    </span>
+                    <span className="text-sm font-medium text-muted-foreground">Due Date</span>
+                    <span className="text-sm font-semibold text-amber-600 dark:text-amber-400">{new Date(billDetails.dueDate).toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" })}</span>
                   </div>
                 )}
               </div>
-
-              {/* Action Buttons */}
               <div className="flex gap-3 pt-4">
-                <Button
-                  variant="outline"
-                  onClick={() => setIsBillDialogOpen(false)}
-                  className="flex-1"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  onClick={() => {
-                    setIsBillDialogOpen(false);
-                    // Scroll to email field (next required field)
-                    setTimeout(() => {
-                      document.getElementById("customerEmail")?.focus();
-                    }, 100);
-                  }}
-                  className="flex-1 paybazaar-gradient text-white"
-                >
-                  <CheckCircle2 className="w-4 h-4 mr-2" />
-                  Proceed to Pay
+                <Button variant="outline" onClick={() => setIsBillDialogOpen(false)} className="flex-1">Cancel</Button>
+                <Button onClick={() => { setIsBillDialogOpen(false); setTimeout(() => document.getElementById("customerEmail")?.focus(), 100); }} className="flex-1 paybazaar-gradient text-white">
+                  <CheckCircle2 className="w-4 h-4 mr-2" />Proceed to Pay
                 </Button>
               </div>
-
-              {/* Info Note */}
               <div className="bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-md p-3">
                 <p className="text-xs text-center text-blue-700 dark:text-blue-300 flex items-center justify-center gap-2">
                   <AlertCircle className="w-3 h-3" />
@@ -1237,6 +1033,14 @@ const ElectricityBillPayment = () => {
           )}
         </DialogContent>
       </Dialog>
+
+      {/* Animations */}
+      <style>{`
+        @keyframes scale-in { 0% { transform: scale(0.5); opacity: 0; } 50% { transform: scale(1.05); } 100% { transform: scale(1); opacity: 1; } }
+        @keyframes check-draw { 0% { stroke-dasharray: 0 100; } 100% { stroke-dasharray: 100 100; } }
+        .animate-scale-in { animation: scale-in 0.6s cubic-bezier(0.34, 1.56, 0.64, 1); }
+        .animate-check-draw { animation: check-draw 0.8s ease-in-out 0.3s forwards; }
+      `}</style>
     </div>
   );
 };
