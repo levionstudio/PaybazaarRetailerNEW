@@ -25,6 +25,8 @@ import {
   WifiOff,
   AlertTriangle,
   FileText,
+  Receipt,
+  Smartphone,
 } from "lucide-react";
 import axios from "axios";
 import { jwtDecode, JwtPayload } from "jwt-decode";
@@ -100,146 +102,225 @@ interface ElectricityReceiptData {
 // ─────────────────────────────────────────────────────────────────────────────
 // Write receipt HTML into an already-opened tab
 // ─────────────────────────────────────────────────────────────────────────────
-const writeReceiptToTab = (tab: Window, data: ElectricityReceiptData) => {
+const writeReceiptToTab = (tab: Window, data: ElectricityReceiptData, retailerProfile: any) => {
   const formatDate = (d: string) => {
     try {
       return new Date(d).toLocaleString("en-IN", {
-        year: "numeric",
-        month: "2-digit",
-        day: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
+        year: "numeric", month: "2-digit", day: "2-digit",
+        hour: "2-digit", minute: "2-digit", second: "2-digit",
       });
-    } catch {
-      return d;
-    }
+    } catch { return d; }
   };
 
   const fmtAmount = (v: number) =>
-    v.toLocaleString("en-IN", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
+    v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   const statusUp = data.status.toUpperCase();
-
-  type SC = { bg: string; border: string; text: string };
-  const statusColors: Record<string, SC> = {
-    SUCCESS:   { bg: "#f0fdf4", border: "#86efac", text: "#16a34a" },
-    PENDING:   { bg: "#fefce8", border: "#fde047", text: "#ca8a04" },
-    FAILED:    { bg: "#fef2f2", border: "#fca5a5", text: "#dc2626" },
-    INITIATED: { bg: "#eff6ff", border: "#93c5fd", text: "#1d4ed8" },
-  };
-  const sc: SC =
-    statusColors[statusUp] ?? {
-      bg: "#f9fafb",
-      border: "#d1d5db",
-      text: "#4b5563",
-    };
-
-  const row = (label: string, value: string) => `
-    <div class="row">
-      <span class="r-label">${label}</span>
-      <span class="r-value">${value}</span>
-    </div>`;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Electricity Bill Payment Receipt</title>
+  <title>Electricity Bill Receipt - ${data.customerId}</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      background: #f3f4f6;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      padding: 28px 16px 48px;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-      color: #111827;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    
+    * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', sans-serif; }
+    body { background: #f0f2f5; padding: 40px 20px; color: #1a1a1a; }
+    
+    .receipt-container {
+      max-width: 600px;
+      margin: 0 auto;
+      background: #fff;
+      border: 2px solid #000;
+      position: relative;
     }
-    .action-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
-    .btn { padding: 8px 26px; border-radius: 7px; font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none; letter-spacing: 0.01em; }
-    .btn-print { background: #4f46e5; color: #fff; }
-    .btn-print:hover { background: #4338ca; }
-    .btn-close { background: #e5e7eb; color: #374151; }
-    .btn-close:hover { background: #d1d5db; }
-    .receipt { width: 148mm; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 14px rgba(0,0,0,0.09); }
-    .r-header { text-align: center; padding: 22px 28px 16px; border-bottom: 1.5px solid #e5e7eb; }
-    .r-header h1 { font-size: 1.28rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #111827; }
-    .r-header .subtitle { font-size: 0.76rem; color: #6b7280; margin-top: 3px; }
-    .r-header .company { font-size: 0.78rem; font-weight: 700; color: #374151; margin-top: 4px; }
-    .id-block { text-align: center; padding: 14px 28px 6px; }
-    .id-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
-    .id-value { font-family: 'Courier New', monospace; font-size: 0.9rem; font-weight: 700; color: #111827; }
-    .status-box { margin: 10px 28px 16px; padding: 10px 0; border-radius: 8px; border: 2px solid ${sc.border}; background: ${sc.bg}; color: ${sc.text}; text-align: center; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.10em; text-transform: uppercase; }
-    .section { padding: 0 28px 14px; }
-    .section-title { font-size: 0.78rem; font-weight: 700; color: #111827; padding-bottom: 7px; border-bottom: 1.5px solid #e5e7eb; margin-bottom: 2px; }
-    .row { display: flex; justify-content: space-between; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f3f4f6; gap: 16px; font-size: 0.82rem; }
-    .row:last-child { border-bottom: none; }
-    .r-label { color: #6b7280; flex-shrink: 0; }
-    .r-value { font-weight: 700; color: #111827; text-align: right; word-break: break-word; }
-    .amount-section { padding: 0 28px 18px; }
-    .amount-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border: 1.5px solid #e5e7eb; border-radius: 7px; background: #f9fafb; margin-top: 7px; }
-    .a-label { font-size: 0.85rem; font-weight: 600; color: #374151; }
-    .a-value { font-size: 1.5rem; font-weight: 800; color: #111827; }
-    .r-footer { border-top: 1.5px solid #e5e7eb; padding: 12px 28px; text-align: center; background: #fafafa; }
-    .r-footer p { font-size: 0.67rem; color: #9ca3af; line-height: 1.5; margin-bottom: 2px; }
-    .r-footer a { color: #4f46e5; text-decoration: none; }
+    
+    .header {
+      display: flex;
+      border-bottom: 2px solid #000;
+      align-items: center;
+    }
+    
+    .logo-section {
+      padding: 20px;
+      border-right: 2px solid #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+    }
+    
+    .logo-placeholder {
+      font-weight: 800;
+      font-size: 24px;
+      color: #000;
+      letter-spacing: -1px;
+    }
+    
+    .logo-sub {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #666;
+      margin-top: -4px;
+    }
+    
+    .header-info {
+      padding: 20px;
+      flex: 1;
+    }
+    
+    .shop-name { font-weight: 800; font-size: 18px; text-transform: uppercase; margin-bottom: 4px; }
+    .shop-detail { font-size: 12px; color: #444; margin-bottom: 2px; font-weight: 500; }
+    
+    .receipt-title-bar {
+      background: #000;
+      color: #fff;
+      padding: 8px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-weight: 700;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+    }
+    
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      background: ${statusUp.includes('SUCCESS') ? '#00c853' : statusUp.includes('FAILED') ? '#ff1744' : '#ffab00'};
+      color: #fff;
+    }
+    
+    .details-grid {
+      display: grid;
+      grid-template-cols: 1fr 1fr;
+      border-bottom: 2px solid #000;
+    }
+    
+    .detail-item {
+      padding: 15px 20px;
+      border-right: 1px solid #eee;
+      border-bottom: 1px solid #eee;
+    }
+    .detail-item:nth-child(2n) { border-right: none; }
+    
+    .label { font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+    .value { font-size: 14px; font-weight: 700; color: #000; }
+    
+    .amount-section {
+      padding: 30px 20px;
+      background: #f9f9f9;
+      text-align: center;
+      border-bottom: 2px solid #000;
+    }
+    
+    .amount-label { font-size: 14px; font-weight: 600; color: #444; margin-bottom: 10px; }
+    .amount-value { font-size: 48px; font-weight: 800; color: #000; }
+    
+    .footer {
+      padding: 20px;
+      text-align: center;
+      font-size: 11px;
+      color: #888;
+      line-height: 1.6;
+    }
+    
+    .actions {
+      max-width: 600px;
+      margin: 20px auto 0;
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+    }
+    
+    .btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .btn-print { background: #000; color: #fff; }
+    .btn-print:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    
     @media print {
-      body { background: white; padding: 0; }
-      .action-bar { display: none !important; }
-      .receipt { width: 148mm; border: none; border-radius: 0; box-shadow: none; margin: 0 auto; }
-      @page { size: 148mm auto; margin: 8mm; }
+      body { background: #fff; padding: 0; }
+      .actions { display: none; }
+      .receipt-container { border: 2px solid #000; margin: 0; max-width: 100%; }
     }
   </style>
 </head>
 <body>
-  <div class="action-bar">
-    <button class="btn btn-print" onclick="window.print()">🖨️ &nbsp;Print Receipt</button>
-    <button class="btn btn-close" onclick="window.close()">✕ &nbsp;Close</button>
-  </div>
-  <div class="receipt">
-    <div class="r-header">
-      <h1>Payment Receipt</h1>
-      <div class="subtitle">Electricity Bill Payment</div>
-      <div class="company">Paybazaar Technologies Pvt. Ltd.</div>
-    </div>
-    <div class="id-block">
-      <div class="id-label">UTR Number</div>
-      <div class="id-value">${data.orderId}</div>
-    </div>
-    <div class="status-box">${statusUp}</div>
-    <div class="section">
-      <div class="section-title">Consumer Details</div>
-      ${data.consumerName ? row("Consumer Name", data.consumerName) : ""}
-      ${row("Customer / Consumer ID", data.customerId)}
-      ${row("Operator", data.operatorName)}
-      ${row("Email", data.customerEmail)}
-    </div>
-    <div class="section">
-      <div class="section-title">Transaction Details</div>
-      ${row("Date &amp; Time", formatDate(data.createdAt))}
-      ${row("Payment Mode", "BBPS – Electricity")}
-    </div>
-    <div class="amount-section">
-      <div class="section-title">Amount Details</div>
-      <div class="amount-row">
-        <span class="a-label">Amount Paid</span>
-        <span class="a-value">₹${fmtAmount(data.amount)}</span>
+  <div class="receipt-container">
+    <div class="header">
+      <div class="logo-section">
+        <div class="logo-placeholder">PAYBAZAR</div>
+        <div class="logo-sub">TECHNOLOGIES</div>
+      </div>
+      <div class="header-info">
+        <div class="shop-name">${retailerProfile?.business_name || "Paybazaar Retailer"}</div>
+        <div class="shop-detail">Prop: ${retailerProfile?.retailer_name || "Merchant"}</div>
+        <div class="shop-detail">Mob: ${retailerProfile?.retailer_phone || "N/A"}</div>
+        <div class="shop-detail">ID: ${retailerProfile?.retailer_id || "N/A"}</div>
       </div>
     </div>
-    <div class="r-footer">
-      <p>This is a computer-generated receipt and does not require a signature.</p>
-      <p>
-        For any technical queries, contact
-        <a href="https://www.gvinfotech.org" target="_blank">www.gvinfotech.org</a>
-        or
-        <a href="https://www.paybazaar.in" target="_blank">www.paybazaar.in</a>
-      </p>
+    
+    <div class="receipt-title-bar">
+      <span>Transaction Receipt</span>
+      <span class="status-badge">${statusUp}</span>
     </div>
+    
+    <div class="details-grid">
+      <div class="detail-item">
+        <div class="label">Transaction Date</div>
+        <div class="value">${formatDate(data.createdAt)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Service Type</div>
+        <div class="value">Electricity Bill Payment</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Customer Name</div>
+        <div class="value">${data.consumerName || "N/A"}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Consumer Number</div>
+        <div class="value">${data.customerId}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Operator</div>
+        <div class="value">${data.operatorName}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Txn ID / UTR</div>
+        <div class="value">${data.orderId}</div>
+      </div>
+    </div>
+    
+    <div class="amount-section">
+      <div class="amount-label">TOTAL AMOUNT PAID</div>
+      <div class="amount-value">₹${fmtAmount(data.amount)}</div>
+    </div>
+    
+    <div class="footer">
+      <p>Thank you for choosing Paybazaar Technologies.</p>
+      <p>This is a computer-generated receipt, no signature required.</p>
+    </div>
+  </div>
+  
+  <div class="actions">
+    <button class="btn btn-print" onclick="window.print()">Print Receipt</button>
   </div>
 </body>
 </html>`;
@@ -256,6 +337,7 @@ const ElectricityBillPayment = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [retailerId, setRetailerId] = useState("");
+  const [retailerProfile, setRetailerProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingOperators, setIsLoadingOperators] = useState(true);
   const [isFetchingBill, setIsFetchingBill] = useState(false);
@@ -295,8 +377,7 @@ const ElectricityBillPayment = () => {
       return;
     }
     try {
-      const decoded: JwtPayload = jwtDecode(token);
-      //@ts-ignore
+      const decoded = jwtDecode(token) as any;
       const userId =
         decoded.retailer_id || decoded.data?.user_id || decoded.user_id;
       if (!userId) {
@@ -309,6 +390,22 @@ const ElectricityBillPayment = () => {
         return;
       }
       setRetailerId(userId);
+
+      // Fetch retailer profile
+      const fetchProfile = async () => {
+        try {
+          const profileRes = await axios.get(
+            `${API_BASE_URL}/retailer/get/retailer/${userId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (profileRes.data.status === "success") {
+            setRetailerProfile(profileRes.data.data.retailer);
+          }
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+        }
+      };
+      fetchProfile();
     } catch {
       toast({
         title: "⚠️ Session Expired",
@@ -368,20 +465,8 @@ const ElectricityBillPayment = () => {
     }
   }, [operatorSearchQuery, operators]);
 
-  // ── Success animation → open receipt tab after 3.5 s ──
-  useEffect(() => {
-    if (showSuccessAnimation && transactionId) {
-      const timer = setTimeout(() => {
-        setShowSuccessAnimation(false);
-        if (pendingReceiptData) {
-          const tab = window.open("", "_blank");
-          if (tab) writeReceiptToTab(tab, pendingReceiptData);
-          setPendingReceiptData(null);
-        }
-      }, 3500);
-      return () => clearTimeout(timer);
-    }
-  }, [showSuccessAnimation, transactionId, pendingReceiptData]);
+  // No auto-open
+
 
   // ── Fetch payment history ──
   const fetchPaymentHistory = async () => {
@@ -965,7 +1050,26 @@ const ElectricityBillPayment = () => {
                 {transactionId && (
                   <p className="text-sm text-gray-500 font-mono">Transaction ID: {transactionId}</p>
                 )}
-                <p className="text-xs text-gray-400 mt-2">Your receipt will open in a new tab shortly…</p>
+                
+                <div className="flex flex-col gap-3 pt-4">
+                  <Button 
+                    onClick={() => {
+                      const tab = window.open("", "_blank");
+                      if (tab && pendingReceiptData) writeReceiptToTab(tab, pendingReceiptData, retailerProfile);
+                    }}
+                    className="w-full bg-black hover:bg-gray-900 text-white h-12 rounded-xl font-bold text-base"
+                  >
+                    <Receipt className="w-5 h-5 mr-2" />
+                    View & Print Receipt
+                  </Button>
+                  <Button 
+                    variant="ghost" 
+                    onClick={() => setShowSuccessAnimation(false)}
+                    className="w-full h-12 rounded-xl text-gray-500 font-semibold"
+                  >
+                    Close
+                  </Button>
+                </div>
               </div>
             </div>
           </div>

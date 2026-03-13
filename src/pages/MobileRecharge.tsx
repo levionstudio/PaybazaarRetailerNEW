@@ -25,6 +25,7 @@ import {
   Loader2,
   WifiOff,
   AlertTriangle,
+  Receipt,
 } from "lucide-react";
 import axios from "axios";
 import { jwtDecode, JwtPayload } from "jwt-decode";
@@ -105,7 +106,7 @@ interface ReceiptData {
 // Layout: RECEIPT title → company → UTR/TxnID → STATUS box → details grid →
 //         amount row → footer
 // ─────────────────────────────────────────────────────────────────────────────
-const openReceiptInNewTab = (data: ReceiptData) => {
+const openReceiptInNewTab = (data: ReceiptData, retailerProfile: any) => {
   const formatDate = (d: string) => {
     try {
       return new Date(d).toLocaleString("en-IN", {
@@ -120,268 +121,227 @@ const openReceiptInNewTab = (data: ReceiptData) => {
 
   const statusUp = data.status.toUpperCase();
 
-  type SC = { bg: string; border: string; text: string };
-  const statusColors: Record<string, SC> = {
-    SUCCESS: { bg: "#f0fdf4", border: "#86efac", text: "#16a34a" },
-    PENDING: { bg: "#fefce8", border: "#fde047", text: "#ca8a04" },
-    FAILED:  { bg: "#fef2f2", border: "#fca5a5", text: "#dc2626" },
-  };
-  const sc: SC = statusColors[statusUp] ?? { bg: "#f9fafb", border: "#d1d5db", text: "#4b5563" };
-
-  // Two-column detail row
-  const row = (label: string, value: string) => `
-    <div class="row">
-      <span class="r-label">${label}</span>
-      <span class="r-value">${value}</span>
-    </div>`;
+  const tab = window.open("", "_blank");
+  if (!tab) return;
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Prepaid Recharge Receipt</title>
+  <title>Recharge Receipt - ${data.mobileNumber}</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-    body {
-      background: #f3f4f6;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      padding: 28px 16px 48px;
-      -webkit-print-color-adjust: exact;
-      print-color-adjust: exact;
-      color: #111827;
-    }
-
-    /* ── Action bar (hidden on print) ── */
-    .action-bar {
-      display: flex;
-      gap: 10px;
-      justify-content: center;
-      margin-bottom: 20px;
-    }
-    .btn {
-      padding: 8px 26px;
-      border-radius: 7px;
-      font-size: 0.88rem;
-      font-weight: 600;
-      cursor: pointer;
-      border: none;
-      letter-spacing: 0.01em;
-    }
-    .btn-print { background: #4f46e5; color: #fff; }
-    .btn-print:hover { background: #4338ca; }
-    .btn-close  { background: #e5e7eb; color: #374151; }
-    .btn-close:hover { background: #d1d5db; }
-
-    /* ── Receipt card — 148 mm wide (A5 / half-A4) ── */
-    .receipt {
-      width: 148mm;
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap');
+    
+    * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', sans-serif; }
+    body { background: #f0f2f5; padding: 40px 20px; color: #1a1a1a; }
+    
+    .receipt-container {
+      max-width: 600px;
       margin: 0 auto;
       background: #fff;
-      border: 1px solid #e5e7eb;
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: 0 2px 14px rgba(0,0,0,0.09);
+      border: 2px solid #000;
+      position: relative;
     }
-
-    /* ── Header ── */
-    .r-header {
-      text-align: center;
-      padding: 22px 28px 16px;
-      border-bottom: 1.5px solid #e5e7eb;
-    }
-    .r-header h1 {
-      font-size: 1.28rem;
-      font-weight: 800;
-      letter-spacing: 0.08em;
-      text-transform: uppercase;
-      color: #111827;
-    }
-    .r-header .company {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: #374151;
-      margin-top: 4px;
-    }
-
-    /* ── ID block ── */
-    .id-block {
-      text-align: center;
-      padding: 14px 28px 6px;
-    }
-    .id-label {
-      font-size: 0.68rem;
-      color: #6b7280;
-      text-transform: uppercase;
-      letter-spacing: 0.07em;
-      margin-bottom: 3px;
-    }
-    .id-value {
-      font-family: 'Courier New', monospace;
-      font-size: 0.9rem;
-      font-weight: 700;
-      color: #111827;
-    }
-
-    /* ── Status box ── */
-    .status-box {
-      margin: 10px 28px 16px;
-      padding: 10px 0;
-      border-radius: 8px;
-      border: 2px solid ${sc.border};
-      background: ${sc.bg};
-      color: ${sc.text};
-      text-align: center;
-      font-size: 0.95rem;
-      font-weight: 800;
-      letter-spacing: 0.10em;
-      text-transform: uppercase;
-    }
-
-    /* ── Section wrapper ── */
-    .section {
-      padding: 0 28px 16px;
-    }
-    .section-title {
-      font-size: 0.78rem;
-      font-weight: 700;
-      color: #111827;
-      padding-bottom: 7px;
-      border-bottom: 1.5px solid #e5e7eb;
-      margin-bottom: 2px;
-    }
-
-    /* ── Detail rows: label left, bold value right ── */
-    .row {
+    
+    .header {
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
-      padding: 8px 0;
-      border-bottom: 1px solid #f3f4f6;
-      gap: 16px;
-      font-size: 0.82rem;
+      border-bottom: 2px solid #000;
+      align-items: center;
     }
-    .row:last-child { border-bottom: none; }
-    .r-label { color: #6b7280; flex-shrink: 0; }
-    .r-value  { font-weight: 700; color: #111827; text-align: right; word-break: break-word; }
-
-    /* ── Amount section ── */
-    .amount-section { padding: 0 28px 18px; }
-    .amount-row {
+    
+    .logo-section {
+      padding: 20px;
+      border-right: 2px solid #000;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: #fff;
+    }
+    
+    .logo-placeholder {
+      font-weight: 800;
+      font-size: 24px;
+      color: #000;
+      letter-spacing: -1px;
+    }
+    
+    .logo-sub {
+      font-size: 9px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #666;
+      margin-top: -4px;
+    }
+    
+    .header-info {
+      padding: 20px;
+      flex: 1;
+    }
+    
+    .shop-name { font-weight: 800; font-size: 18px; text-transform: uppercase; margin-bottom: 4px; }
+    .shop-detail { font-size: 12px; color: #444; margin-bottom: 2px; font-weight: 500; }
+    
+    .receipt-title-bar {
+      background: #000;
+      color: #fff;
+      padding: 8px 20px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      padding: 10px 14px;
-      border: 1.5px solid #e5e7eb;
-      border-radius: 7px;
-      background: #f9fafb;
-      margin-top: 7px;
+      font-weight: 700;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
     }
-    .a-label { font-size: 0.85rem; font-weight: 600; color: #374151; }
-    .a-value  { font-size: 1.5rem; font-weight: 800; color: #111827; }
-
-    /* ── Footer ── */
-    .r-footer {
-      border-top: 1.5px solid #e5e7eb;
-      padding: 12px 28px;
+    
+    .status-badge {
+      padding: 4px 12px;
+      border-radius: 4px;
+      font-size: 12px;
+      background: ${statusUp === 'SUCCESS' ? '#00c853' : statusUp === 'FAILED' ? '#ff1744' : '#ffab00'};
+      color: #fff;
+    }
+    
+    .details-grid {
+      display: grid;
+      grid-template-cols: 1fr 1fr;
+      border-bottom: 2px solid #000;
+    }
+    
+    .detail-item {
+      padding: 15px 20px;
+      border-right: 1px solid #eee;
+      border-bottom: 1px solid #eee;
+    }
+    .detail-item:nth-child(2n) { border-right: none; }
+    
+    .label { font-size: 11px; font-weight: 600; color: #666; text-transform: uppercase; margin-bottom: 4px; }
+    .value { font-size: 14px; font-weight: 700; color: #000; }
+    
+    .amount-section {
+      padding: 30px 20px;
+      background: #f9f9f9;
       text-align: center;
-      background: #fafafa;
+      border-bottom: 2px solid #000;
     }
-    .r-footer p { font-size: 0.67rem; color: #9ca3af; line-height: 1.5; margin-bottom: 2px; }
-    .r-footer a { color: #4f46e5; text-decoration: none; }
-
-    /* ── Print styles ── */
+    
+    .amount-label { font-size: 14px; font-weight: 600; color: #444; margin-bottom: 10px; }
+    .amount-value { font-size: 48px; font-weight: 800; color: #000; }
+    
+    .footer {
+      padding: 20px;
+      text-align: center;
+      font-size: 11px;
+      color: #888;
+      line-height: 1.6;
+    }
+    
+    .actions {
+      max-width: 600px;
+      margin: 20px auto 0;
+      display: flex;
+      gap: 15px;
+      justify-content: center;
+    }
+    
+    .btn {
+      padding: 12px 24px;
+      border-radius: 8px;
+      font-weight: 700;
+      cursor: pointer;
+      border: none;
+      transition: all 0.2s;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    
+    .btn-print { background: #000; color: #fff; }
+    .btn-print:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+    
     @media print {
-      body { background: white; padding: 0; }
-      .action-bar { display: none !important; }
-      .receipt { width: 148mm; border: none; border-radius: 0; box-shadow: none; margin: 0 auto; }
-      @page { size: 148mm auto; margin: 8mm; }
+      body { background: #fff; padding: 0; }
+      .actions { display: none; }
+      .receipt-container { border: 2px solid #000; margin: 0; max-width: 100%; }
     }
   </style>
 </head>
 <body>
-
-  <!-- Action Buttons -->
-  <div class="action-bar">
-    <button class="btn btn-print" onclick="window.print()">🖨️ &nbsp;Print Receipt</button>
-    <button class="btn btn-close" onclick="window.close()">✕ &nbsp;Close</button>
-  </div>
-
-  <!-- Receipt -->
-  <div class="receipt">
-
-    <!-- Header -->
-    <div class="r-header">
-      <h1>Prepaid Recharge Receipt</h1>
-      <div class="company">Paybazaar Technologies Pvt. Ltd.</div>
-    </div>
-
-    <!-- Partner Request ID -->
-    <div class="id-block">
-      <div class="id-label">Partner Request ID</div>
-      <div class="id-value">${data.partnerRequestId}</div>
-    </div>
-
-    ${data.transactionId ? `
-    <!-- Transaction ID -->
-    <div class="id-block" style="padding-top:4px;">
-      <div class="id-label">UTR Number</div>
-      <div class="id-value">${data.transactionId}</div>
-    </div>` : ""}
-
-    <!-- Status -->
-    <div class="status-box">${statusUp}</div>
-
-    <!-- Recharge Details -->
-    <div class="section">
-      <div class="section-title">Recharge Details</div>
-      ${row("Date &amp; Time",  formatDate(data.createdAt))}
-      ${row("Mobile Number",    data.mobileNumber)}
-      ${row("Operator",         data.operatorName)}
-      ${row("Circle / Region",  data.circleName)}
-      ${row("Recharge Type",    "Prepaid")}
-    </div>
-
-    <!-- Amount Details -->
-    <div class="amount-section">
-      <div class="section-title">Amount Details</div>
-      <div class="amount-row">
-        <span class="a-label">Amount Recharged</span>
-        <span class="a-value">₹${fmtAmount(data.amount)}</span>
+  <div class="receipt-container">
+    <div class="header">
+      <div class="logo-section">
+        <div class="logo-placeholder">PAYBAZAR</div>
+        <div class="logo-sub">TECHNOLOGIES</div>
+      </div>
+      <div class="header-info">
+        <div class="shop-name">${retailerProfile?.business_name || "Paybazaar Retailer"}</div>
+        <div class="shop-detail">Prop: ${retailerProfile?.retailer_name || "Merchant"}</div>
+        <div class="shop-detail">Mob: ${retailerProfile?.retailer_phone || "N/A"}</div>
+        <div class="shop-detail">ID: ${retailerProfile?.retailer_id || "N/A"}</div>
       </div>
     </div>
-
-    <!-- Footer -->
-    <div class="r-footer">
-      <p>This is a computer-generated receipt and does not require a signature.</p>
-      <p>
-        For any technical queries, contact
-        <a href="https://www.gvinfotech.org" target="_blank">www.gvinfotech.org</a>
-        or
-        <a href="https://www.paybazaar.in" target="_blank">www.paybazaar.in</a>
-      </p>
+    
+    <div class="receipt-title-bar">
+      <span>Transaction Receipt</span>
+      <span class="status-badge">${statusUp}</span>
     </div>
-
-  </div><!-- /receipt -->
+    
+    <div class="details-grid">
+      <div class="detail-item">
+        <div class="label">Transaction Date</div>
+        <div class="value">${formatDate(data.createdAt)}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Service Type</div>
+        <div class="value">Mobile Recharge (Prepaid)</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Mobile Number</div>
+        <div class="value">${data.mobileNumber}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Operator</div>
+        <div class="value">${data.operatorName}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Circle</div>
+        <div class="value">${data.circleName}</div>
+      </div>
+      <div class="detail-item">
+        <div class="label">Txn ID / UTR</div>
+        <div class="value">${data.transactionId || data.partnerRequestId}</div>
+      </div>
+    </div>
+    
+    <div class="amount-section">
+      <div class="amount-label">TOTAL AMOUNT PAID</div>
+      <div class="amount-value">₹${fmtAmount(data.amount)}</div>
+    </div>
+    
+    <div class="footer">
+      <p>Thank you for choosing Paybazaar Technologies.</p>
+      <p>This is a computer-generated receipt, no signature required.</p>
+    </div>
+  </div>
+  
+  <div class="actions">
+    <button class="btn btn-print" onclick="window.print()">Print Receipt</button>
+  </div>
 </body>
 </html>`;
 
-  const tab = window.open("", "_blank");
-  if (tab) {
-    tab.document.open();
-    tab.document.write(html);
-    tab.document.close();
-  }
+  tab.document.open();
+  tab.document.write(html);
+  tab.document.close();
 };
 
-// ─────────────────────────────────────────────
-// Main Component
-// ─────────────────────────────────────────────
 const MobileRecharge = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
   const [retailerId, setRetailerId] = useState("");
+  const [retailerProfile, setRetailerProfile] = useState<any>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadingOperators, setIsLoadingOperators] = useState(true);
   const [isLoadingCircles, setIsLoadingCircles] = useState(true);
@@ -397,6 +357,10 @@ const MobileRecharge = () => {
   const [selectedPlanCategory, setSelectedPlanCategory] = useState<string>("all");
   const [rechargeHistory, setRechargeHistory] = useState<RechargeHistory[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+
+  // Success state for receipt
+  const [showSuccessDialog, setShowSuccessDialog] = useState(false);
+  const [pendingReceipt, setPendingReceipt] = useState<ReceiptData | null>(null);
 
   const [rechargeForm, setRechargeForm] = useState({
     mobileNumber: "",
@@ -425,6 +389,22 @@ const MobileRecharge = () => {
         return;
       }
       setRetailerId(userId);
+
+      // Fetch retailer profile
+      const fetchProfile = async () => {
+        try {
+          const profileRes = await axios.get(
+            `${import.meta.env.VITE_API_BASE_URL}/retailer/get/retailer/${userId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (profileRes.data.status === "success") {
+            setRetailerProfile(profileRes.data.data.retailer);
+          }
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+        }
+      };
+      fetchProfile();
     } catch {
       toast({ title: "⚠️ Session Expired", description: "Your session has expired. Please log in again to continue.", variant: "destructive" });
       navigate("/login");
@@ -616,8 +596,8 @@ const MobileRecharge = () => {
 
         toast({ title: "🎉 Recharge Successful!", description: `₹${amount} recharged to ${rechargeForm.mobileNumber} (${rechargeForm.operatorName})` });
 
-        // ── Auto open receipt ──
-        openReceiptInNewTab({
+        // ── Show Success Dialog and set receipt data ──
+        setPendingReceipt({
           mobileNumber: rechargeForm.mobileNumber,
           operatorName: rechargeForm.operatorName,
           circleName: rechargeForm.circleName,
@@ -627,6 +607,7 @@ const MobileRecharge = () => {
           status: rechargeStatus,
           createdAt: new Date().toISOString(),
         });
+        setShowSuccessDialog(true);
 
         setRechargeForm({ mobileNumber: "", operatorCode: "", operatorName: "", circleCode: "", circleName: "", amount: "" });
         fetchRechargeHistory();
@@ -955,6 +936,56 @@ const MobileRecharge = () => {
                 </TabsContent>
               </div>
             </Tabs>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Success Dialog with Receipt Button */}
+      <Dialog open={showSuccessDialog} onOpenChange={setShowSuccessDialog}>
+        <DialogContent className="max-w-md p-0 overflow-hidden bg-white rounded-2xl shadow-2xl border-none">
+          <div className="paybazaar-gradient p-8 text-center text-white relative">
+            <div className="absolute top-4 right-4 cursor-pointer" onClick={() => setShowSuccessDialog(false)}>
+              <X className="w-5 h-5 text-white/50" />
+            </div>
+            <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mx-auto mb-4 animate-bounce">
+              <CheckCircle2 className="w-12 h-12 text-white" />
+            </div>
+            <h2 className="text-2xl font-bold mb-1">Recharge Successful!</h2>
+            <p className="text-white/80 text-sm">₹{pendingReceipt?.amount} added to {pendingReceipt?.mobileNumber}</p>
+          </div>
+          
+          <div className="p-6 space-y-4">
+            <div className="bg-gray-50 rounded-xl p-4 space-y-3">
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Operator</span>
+                <span className="font-semibold">{pendingReceipt?.operatorName}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Transaction ID</span>
+                <span className="font-mono font-medium">{pendingReceipt?.transactionId || pendingReceipt?.partnerRequestId}</span>
+              </div>
+              <div className="flex justify-between text-sm">
+                <span className="text-gray-500">Status</span>
+                <Badge className="bg-green-500 hover:bg-green-600 text-white border-none">SUCCESS</Badge>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 pt-2">
+              <Button 
+                onClick={() => pendingReceipt && openReceiptInNewTab(pendingReceipt, retailerProfile)}
+                className="w-full bg-black hover:bg-gray-900 text-white h-12 rounded-xl font-bold text-base"
+              >
+                <Receipt className="w-5 h-5 mr-2" />
+                View & Print Receipt
+              </Button>
+              <Button 
+                variant="outline" 
+                onClick={() => setShowSuccessDialog(false)}
+                className="w-full h-12 rounded-xl border-gray-200 text-gray-600 font-semibold"
+              >
+                Done
+              </Button>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

@@ -39,6 +39,7 @@ import {
   Calendar,
   AlertCircle,
   X,
+  Eye,
 } from "lucide-react";
 import { useNavigate, useLocation } from "react-router-dom";
 import * as XLSX from "xlsx";
@@ -109,6 +110,7 @@ export default function ServiceReportSettlement() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<Transaction | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [retailerProfile, setRetailerProfile] = useState<any>(null);
 
   // Decode token
   useEffect(() => {
@@ -136,6 +138,23 @@ export default function ServiceReportSettlement() {
         return;
       }
       setTokenData(decoded);
+      const userId = decoded.user_id || "";
+
+      // Fetch retailer profile
+      const fetchProfile = async () => {
+        try {
+          const profileRes = await axios.get(
+            `${import.meta.env.VITE_API_BASE_URL}/retailer/get/retailer/${userId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (profileRes.data.status === "success") {
+            setRetailerProfile(profileRes.data.data.retailer);
+          }
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+        }
+      };
+      fetchProfile();
     } catch (error) {
       toast({
         title: "Invalid token",
@@ -586,6 +605,25 @@ export default function ServiceReportSettlement() {
     setIsReceiptOpen(true);
   };
 
+  const numberToWords = (num: number): string => {
+    const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+    const numStr = num.toString().split('.')[0];
+    if (numStr === '0') return 'Zero';
+
+    const n = ('000000000' + numStr).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+    if (!n) return '';
+
+    let str = '';
+    str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+    str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+    str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+    str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+    str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+    return str.trim() + ' Rupees';
+  };
+
   const handleDownloadReceipt = async () => {
     if (!receiptRef.current || !selectedTransaction) return;
 
@@ -600,6 +638,7 @@ export default function ServiceReportSettlement() {
         useCORS: true,
         logging: false,
         backgroundColor: "#ffffff",
+        windowWidth: 800, // Ensure fixed width for capture
       });
 
       const imgData = canvas.toDataURL("image/png");
@@ -676,248 +715,218 @@ export default function ServiceReportSettlement() {
     const transferTypeName = tx.transfer_type === "5" ? "IMPS" : tx.transfer_type === "6" ? "NEFT" : tx.transfer_type;
     const txId = tx.operator_transaction_id || tx.payout_transaction_id;
     const printDate = new Date().toLocaleString("en-IN");
+    const amountInWords = numberToWords(typeof tx.amount === "string" ? parseFloat(tx.amount) : tx.amount);
 
     printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
-          <title>Receipt</title>
+          <title>Receipt - ${txId}</title>
           <style>
             * { box-sizing: border-box; margin: 0; padding: 0; }
-            html, body {
-              width: 100%;
-              height: 100%;
+            body {
               background: white;
-              font-family: 'Segoe UI', Arial, sans-serif;
-              font-size: 14px;
-              color: #111;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
+              font-family: Arial, sans-serif;
+              padding: 10px;
+              color: #000;
             }
-            @page {
-              size: 210mm 148.5mm;
-              margin: 0;
+            .receipt-container {
+              width: 100%;
+              max-width: 800px;
+              margin: 0 auto;
+              border: 1px solid #000;
+              padding: 10px;
             }
-            .page {
-              width: 210mm;
-              height: 148.5mm;
-              padding: 7mm 12mm;
-              display: flex;
-              flex-direction: column;
-            }
-            .meta-row {
-              display: flex;
-              justify-content: space-between;
-              font-size: 10px;
-              color: #6b7280;
-              margin-bottom: 5px;
-              flex-shrink: 0;
-            }
-            .header {
+            .header-logo {
               text-align: center;
-              border-bottom: 2px solid #e5e7eb;
-              padding-bottom: 7px;
-              margin-bottom: 7px;
-              flex-shrink: 0;
+              margin-bottom: 20px;
+              border-bottom: 1px solid #000;
+              padding-bottom: 10px;
             }
-            .header h1 {
-              font-size: 20px;
-              font-weight: 800;
-              letter-spacing: 4px;
-              color: #111827;
-            }
-            .header p {
-              font-size: 11px;
-              font-weight: 700;
-              color: #374151;
-              margin-top: 2px;
-            }
-            .txn-id-box {
-              text-align: center;
-              margin-bottom: 6px;
-              flex-shrink: 0;
-            }
-            .txn-id-box .label {
-              font-size: 10px;
-              color: #6b7280;
-              margin-bottom: 2px;
-            }
-            .txn-id-box .value {
-              font-family: monospace;
-              font-size: 12px;
-              font-weight: 600;
-              color: #111;
-            }
-            .status-box {
-              text-align: center;
-              padding: 8px;
-              border-radius: 8px;
-              border: 2px solid ${sc.border};
-              background-color: ${sc.bg};
-              color: ${sc.text};
-              font-size: 15px;
-              font-weight: 800;
+            .header-logo h1 {
+              font-size: 24px;
+              font-weight: bold;
               letter-spacing: 2px;
-              margin-bottom: 8px;
-              flex-shrink: 0;
             }
-            .details-section {
-              flex: 1;
+            .details-row {
               display: flex;
-              flex-direction: column;
-              min-height: 0;
-            }
-            .section-title {
-              font-size: 11px;
-              font-weight: 700;
-              color: #111;
-              padding-bottom: 4px;
-              border-bottom: 1px solid #e5e7eb;
+              border-bottom: 1px solid #000;
               margin-bottom: 0;
-              flex-shrink: 0;
             }
-            .details-grid {
-              display: grid;
-              grid-template-columns: 1fr 1fr;
+            .shop-details {
               flex: 1;
+              padding: 10px;
+              border-right: 1px solid #000;
+              font-size: 13px;
+              line-height: 1.4;
             }
-            .detail-item {
-              padding: 0 10px;
-              border-bottom: 1px solid #f3f4f6;
-              display: flex;
-              flex-direction: column;
-              justify-content: center;
+            .beneficiary-details {
+              flex: 1.5;
+              padding: 0;
             }
-            .detail-item:nth-child(odd) {
-              border-right: 1px solid #f3f4f6;
-            }
-            .detail-item .label {
-              font-size: 9px;
-              color: #6b7280;
-              text-transform: uppercase;
-              letter-spacing: 0.5px;
-              margin-bottom: 2px;
-            }
-            .detail-item .value {
+            .bene-title {
+              font-weight: bold;
               font-size: 11px;
-              font-weight: 600;
-              color: #111;
+              border-bottom: 1px solid #333;
+              padding: 5px 10px;
+              text-transform: uppercase;
+              background: #f9f9f9;
             }
-            .amount-section {
-              margin-top: 6px;
-              flex-shrink: 0;
+            .bene-content {
+              padding: 10px;
+              font-size: 13px;
+              line-height: 1.6;
             }
-            .amount-row {
+            .bene-grid {
+              display: grid;
+              grid-template-columns: 130px 1fr;
+            }
+            .bene-label {
+              font-weight: normal;
+            }
+            .bene-value {
+              font-weight: bold;
+            }
+            table {
+              width: 100%;
+              border-collapse: collapse;
+            }
+            th {
+              border: 1px solid #000;
+              padding: 6px;
+              font-size: 12px;
+              background: #f0f0f0;
+              text-transform: uppercase;
+            }
+            td {
+              border: 1px solid #000;
+              padding: 8px;
+              font-size: 13px;
+            }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .totals-row td {
+              font-weight: bold;
+              padding: 5px 10px;
+            }
+            .footer-section {
+              margin-top: 10px;
               display: flex;
               justify-content: space-between;
-              align-items: center;
-              padding: 10px 14px;
-              border: 2px solid #e5e7eb;
-              border-radius: 8px;
-              background: #f9fafb;
-              margin-top: 5px;
-            }
-            .amount-row .label {
               font-size: 12px;
-              font-weight: 600;
-              color: #374151;
             }
-            .amount-row .value {
-              font-size: 22px;
-              font-weight: 800;
-              color: #111;
+            .amount-words {
+              font-size: 18px;
+              font-weight: bold;
+              text-align: right;
+              padding: 10px 0;
             }
-            .footer {
-              margin-top: 6px;
-              border-top: 1px solid #e5e7eb;
-              padding-top: 6px;
-              text-align: center;
-              flex-shrink: 0;
+            .shop-footer {
+              text-align: right;
+              line-height: 1.4;
             }
-            .footer p {
-              font-size: 9px;
-              color: #9ca3af;
-              margin-bottom: 2px;
-            }
-            .footer a {
-              color: #2563eb;
-              text-decoration: underline;
+            @media print {
+              body { padding: 0; }
+              .receipt-container { border: 1px solid #000; width: 210mm; }
             }
           </style>
         </head>
         <body>
-          <div class="page">
-            <div class="meta-row">
-              <span>${printDate}</span>
-              <span>Receipt</span>
+          <div class="receipt-container">
+            <div class="header-logo">
+              <h1>PAYBAZAAR</h1>
+              <div style="font-size: 12px; margin-top: -5px; font-weight: bold; color: #333;">TECHNOLOGIES</div>
             </div>
 
-            <div class="header">
-              <h1>RECEIPT</h1>
-              <p>Paybazaar Technologies Pvt. Ltd.</p>
-            </div>
-
-            <div class="txn-id-box">
-              <div class="label">Transaction ID</div>
-              <div class="value">${txId}</div>
-            </div>
-
-            <div class="status-box">${tx.transaction_status.toUpperCase()}</div>
-
-            <div class="details-section">
-              <div class="section-title">Transaction Details</div>
-              <div class="details-grid">
-                <div class="detail-item">
-                  <div class="label">Date &amp; Time</div>
-                  <div class="value">${formattedDate}</div>
-                </div>
-                <div class="detail-item">
-                  <div class="label">Transfer Type</div>
-                  <div class="value">${transferTypeName}</div>
-                </div>
-                <div class="detail-item">
-                  <div class="label">Phone Number</div>
-                  <div class="value">${tx.mobile_number}</div>
-                </div>
-                <div class="detail-item">
-                  <div class="label">Bank Name</div>
-                  <div class="value">${tx.bank_name}</div>
-                </div>
-                <div class="detail-item">
-                  <div class="label">Beneficiary Name</div>
-                  <div class="value">${tx.beneficiary_name}</div>
-                </div>
-                <div class="detail-item">
-                  <div class="label">Account Number</div>
-                  <div class="value">${tx.account_number}</div>
-                </div>
-                <div class="detail-item">
-                  <div class="label">IFSC Code</div>
-                  <div class="value">${tx.ifsc_code}</div>
+            <div class="details-row">
+              <div class="shop-details">
+                <div style="font-weight: bold; font-size: 18px; color: #000; margin-bottom: 5px;">${tx.retailer_business_name || tx.retailer_name}</div>
+                <div style="font-size: 14px; margin-bottom: 2px;">Prop: ${tx.retailer_name}</div>
+                <div style="font-size: 14px; margin-bottom: 2px;">Mob: ${tx.mobile_number}</div>
+                <div style="font-size: 13px; color: #444;">ID: ${tx.retailer_id}</div>
+              </div>
+              <div class="beneficiary-details">
+                <div class="bene-title">Beneficiary Detail</div>
+                <div class="bene-content">
+                  <div class="bene-grid">
+                    <span class="bene-label">Beneficiary Name</span>
+                    <span class="bene-value">: ${tx.beneficiary_name.toUpperCase()}</span>
+                    
+                    <span class="bene-label">Sender Number</span>
+                    <span class="bene-value">: ${tx.mobile_number}</span>
+                    
+                    <span class="bene-label">Bank</span>
+                    <span class="bene-value">: ${tx.bank_name.toUpperCase()}</span>
+                    
+                    <span class="bene-label">Account No.</span>
+                    <span class="bene-value">: ${tx.account_number} (${tx.ifsc_code})</span>
+                    
+                    <span class="bene-label">Date Time</span>
+                    <span class="bene-value">: ${formattedDate}</span>
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="amount-section">
-              <div class="section-title">Amount Details</div>
-              <div class="amount-row">
-                <span class="label">Transfer Amount</span>
-                <span class="value">₹${formattedAmount}</span>
-              </div>
-            </div>
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 50px;">S.No</th>
+                  <th>Description</th>
+                  <th>Bank Ref ID</th>
+                  <th style="width: 120px;">Amount (Rs.)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="height: 60px;">
+                  <td class="text-center" style="vertical-align: top;">1</td>
+                  <td style="vertical-align: top;">
+                    ${transferTypeName} Transaction ${tx.transaction_status.toUpperCase()}.<br/>
+                    ${txId}
+                  </td>
+                  <td class="text-center" style="vertical-align: top;">${tx.operator_transaction_id || '-'}</td>
+                  <td class="text-right" style="vertical-align: top;">${formattedAmount}</td>
+                </tr>
+                <tr class="totals-row">
+                  <td colspan="3" class="text-right">SUBTOTAL</td>
+                  <td class="text-right">₹ ${formattedAmount}</td>
+                </tr>
+                <tr class="totals-row">
+                  <td colspan="3" class="text-right">GRAND TOTAL</td>
+                  <td class="text-right">₹ ${formattedAmount}</td>
+                </tr>
+              </tbody>
+            </table>
 
-            <div class="footer">
-              <p>This is a computer-generated receipt and does not require a signature.</p>
-              <p>For any technical queries, contact <a href="https://www.gvinfotech.org">www.gvinfotech.org</a> or <a href="https://www.paybazaar.in">www.paybazaar.in</a></p>
+            <div class="amount-words">${amountInWords}</div>
+
+            <div class="footer-section">
+              <div style="line-height: 1.6;">
+                Thank you!<br/>
+                <strong>Customer Services:</strong>
+              </div>
+              <div class="shop-footer">
+                <div style="font-size: 10px; color: #333; margin-bottom: 2px;">PLATFORM BY</div>
+                <div style="font-weight: bold; font-size: 14px; color: #000;">Paybazaar Technologies</div>
+                <div style="font-size: 11px; color: #555;">Support: info@paybazaar.in</div>
+              </div>
             </div>
           </div>
           <script>
-            window.onload = () => {
+            function doPrint() {
               window.focus();
               window.print();
-              window.close();
-            };
+              // Keep window open for a short bit so print dialog actually shows in all browsers
+              setTimeout(() => {
+                // window.close(); // Optional: user might want to see it
+              }, 500);
+            }
+            if (document.readyState === 'complete') {
+              doPrint();
+            } else {
+              window.onload = doPrint;
+            }
           </script>
         </body>
       </html>
@@ -1370,140 +1379,146 @@ export default function ServiceReportSettlement() {
           </div>
 
           {selectedTransaction && (
-            <div
-              ref={receiptRef}
-              className="bg-white p-8 space-y-6 border rounded-lg"
-            >
-              {/* Header */}
-              <div className="text-center border-b pb-6">
-                <h2 className="text-2xl font-bold text-gray-800">
-                  RECEIPT
-                </h2>
-                <p className="text-sm text-black font-bold">
-                  Paybazaar Technologies Pvt. Ltd.
-                </p>
+            <div id="settlement-receipt-content" ref={receiptRef} className="bg-white border border-black p-4 space-y-4 text-black font-sans">
+              {/* Header Logo */}
+              <div className="text-center border-b border-black pb-3">
+                <h2 className="text-3xl font-extrabold tracking-widest text-black">PAYBAZAAR</h2>
+                <p className="text-[11px] font-bold text-gray-700 tracking-[0.2em]">— TECHNOLOGIES —</p>
               </div>
 
-              {/* Transaction Status */}
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className="text-xs text-black mb-1"> UTR Number</p>
-                  <p className="font-mono text-sm font-semibold">
-                    {selectedTransaction.operator_transaction_id || selectedTransaction.payout_transaction_id}
-                  </p>
+              {/* Shop and Beneficiary Row */}
+              <div className="flex border-b border-black -mx-4">
+                <div className="flex-1 p-4 border-r border-black text-sm">
+                  <p className="font-bold text-lg">{retailerProfile?.business_name || selectedTransaction.retailer_business_name || selectedTransaction.retailer_name}</p>
+                  <p>{retailerProfile?.retailer_name || selectedTransaction.retailer_name}</p>
+                  <p>{retailerProfile?.retailer_phone || selectedTransaction.mobile_number}</p>
+                  <p className="underline">{retailerProfile?.retailer_id || selectedTransaction.retailer_id}@gmail.com</p>
                 </div>
-
-                <div
-                  className={`text-center py-3 rounded-lg border-2 ${getStatusColorForReceipt(
-                    selectedTransaction.transaction_status
-                  )}`}
-                >
-                  <p className="font-bold text-lg uppercase">
-                    {selectedTransaction.transaction_status}
-                  </p>
-                </div>
-              </div>
-
-              {/* Transaction Details */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-black pb-2 border-b">
-                  Transaction Details
-                </h3>
-
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-black">Date & Time</p>
-                    <p className="font-medium">
-                      {formatDate(selectedTransaction.created_at)}
-                    </p>
+                <div className="flex-[1.5]">
+                  <div className="bg-gray-50 border-b border-black px-4 py-2 text-[10px] font-bold uppercase">
+                    Beneficiary Detail
                   </div>
+                  <div className="p-4 text-sm space-y-2">
+                    <div className="grid grid-cols-[120px_1fr]">
+                      <span>Beneficiary Name</span>
+                      <span className="font-bold">: {selectedTransaction.beneficiary_name.toUpperCase()}</span>
 
-                  <div>
-                    <p className="text-black">Transfer Type</p>
-                    <p className="font-medium">
-                      {getTransferTypeName(selectedTransaction.transfer_type)}
-                    </p>
-                  </div>
+                      <span>Sender Number</span>
+                      <span className="font-bold">: {selectedTransaction.mobile_number}</span>
 
-                  <div>
-                    <p className="text-black">Phone Number</p>
-                    <p className="font-medium">
-                      {selectedTransaction.mobile_number}
-                    </p>
-                  </div>
+                      <span>Bank</span>
+                      <span className="font-bold">: {selectedTransaction.bank_name.toUpperCase()}</span>
 
-                  <div>
-                    <p className="text-black">Bank Name</p>
-                    <p className="font-medium">
-                      {selectedTransaction.bank_name}
-                    </p>
-                  </div>
+                      <span>Account No.</span>
+                      <span className="font-bold">: {selectedTransaction.account_number} ({selectedTransaction.ifsc_code})</span>
 
-                  <div>
-                    <p className="text-black">Beneficiary Name</p>
-                    <p className="font-medium">
-                      {selectedTransaction.beneficiary_name}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">Account Number</p>
-                    <p className="font-medium font-mono">
-                      {selectedTransaction.account_number}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">IFSC Code</p>
-                    <p className="font-medium font-mono">
-                      {selectedTransaction.ifsc_code}
-                    </p>
+                      <span>Date Time</span>
+                      <span className="font-bold">: {formatDate(selectedTransaction.created_at)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Amount Details */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-black pb-2 border-b">
-                  Amount Details
-                </h3>
+              {/* Items Table */}
+              <div className="-mx-4">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="border-y border-black p-2 bg-gray-50 text-[10px] uppercase w-[50px]">S.No</th>
+                      <th className="border border-black p-2 bg-gray-50 text-[10px] uppercase text-left">Description</th>
+                      <th className="border border-black p-2 bg-gray-50 text-[10px] uppercase">Bank Ref ID</th>
+                      <th className="border-y border-black p-2 bg-gray-50 text-[10px] uppercase w-[120px] text-right">Amount (Rs.)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="min-h-[80px]">
+                      <td className="border-r border-black p-3 text-center align-top">1</td>
+                      <td className="border-r border-black p-3 align-top">
+                        {getTransferTypeName(selectedTransaction.transfer_type)} Transaction {selectedTransaction.transaction_status.toUpperCase()}.<br />
+                        <span className="text-xs font-mono">{selectedTransaction.operator_transaction_id || selectedTransaction.payout_transaction_id}</span>
+                      </td>
+                      <td className="border-r border-black p-3 text-center align-top">
+                        {selectedTransaction.operator_transaction_id || '-'}
+                      </td>
+                      <td className="p-3 text-right align-top font-bold">
+                        {formatAmount(selectedTransaction.amount)}
+                      </td>
+                    </tr>
+                    <tr className="border-t border-black font-bold">
+                      <td colSpan={3} className="border-r border-black p-2 text-right">SUBTOTAL</td>
+                      <td className="p-2 text-right">₹ {formatAmount(selectedTransaction.amount)}</td>
+                    </tr>
+                    <tr className="border-t border-black font-bold">
+                      <td colSpan={3} className="border-r border-black p-2 text-right">GRAND TOTAL</td>
+                      <td className="p-2 text-right">₹ {formatAmount(selectedTransaction.amount)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-3 border-b">
-                    <span className="text-black font-medium">Transfer Amount</span>
-                    <span className="font-bold text-2xl text-black">
-                      ₹{formatAmount(selectedTransaction.amount)}
-                    </span>
-                  </div>
-                </div>
+              {/* Amount in Words */}
+              <div className="text-right text-lg font-bold py-2">
+                {numberToWords(typeof selectedTransaction.amount === "string" ? parseFloat(selectedTransaction.amount) : selectedTransaction.amount)}
               </div>
 
               {/* Footer */}
-              <div className="border-t pt-6 text-center space-y-2">
-                <p className="text-xs text-gray-500">
-                  This is a computer-generated receipt and does not require a
-                  signature.
-                </p>
-                <p className="text-xs text-gray-500">
-                  For any technical queries, contact{" "}
-                  <a
-                    href="https://www.gvinfotech.org"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    www.gvinfotech.org
-                  </a>{" "}
-                  or{" "}
-                  <a
-                    href="https://www.paybazaar.in"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    www.paybazaar.in
-                  </a>
-                </p>
+              <div className="flex justify-between items-end border-t border-black pt-4">
+                <div className="text-xs space-y-1">
+                  <p>Thank you!</p>
+                  <p className="font-bold">Customer Services:</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-500 uppercase font-semibold">Platform By</p>
+                  <p className="font-bold text-lg text-black">Paybazaar Technologies</p>
+                  <p className="text-[10px] text-gray-600">www.paybazaar.in</p>
+                </div>
+              </div>
+              <div className="flex gap-3 mt-6 print:hidden">
+                <Button 
+                  onClick={() => {
+                    const printContent = document.getElementById('settlement-receipt-content');
+                    if (printContent) {
+                      const printWindow = window.open('', '_blank');
+                      if (printWindow) {
+                        printWindow.document.write(`
+                          <html>
+                            <head>
+                              <title>Settlement Receipt</title>
+                              <script src="https://cdn.tailwindcss.com"></script>
+                              <style>
+                                body { padding: 40px; }
+                                @media print {
+                                  body { padding: 0; }
+                                }
+                              </style>
+                            </head>
+                            <body>
+                              ${printContent.innerHTML}
+                              <script>
+                                window.onload = () => {
+                                  window.print();
+                                  setTimeout(() => window.close(), 100);
+                                };
+                              </script>
+                            </body>
+                          </html>
+                        `);
+                        printWindow.document.close();
+                      }
+                    }
+                  }}
+                  className="flex-1 bg-black hover:bg-gray-900 text-white font-bold"
+                >
+                  <Printer className="w-4 h-4 mr-2" />
+                  Print Receipt
+                </Button>
+                <Button 
+                  variant="outline" 
+                  onClick={() => setSelectedTransaction(null)}
+                  className="flex-1"
+                >
+                  Close
+                </Button>
               </div>
             </div>
           )}

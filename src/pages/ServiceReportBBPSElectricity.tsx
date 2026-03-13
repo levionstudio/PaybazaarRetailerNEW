@@ -102,6 +102,7 @@ export default function ElectricityBillReport() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<ElectricityBillTransaction | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [retailerProfile, setRetailerProfile] = useState<any>(null);
 
   // Debounce search term
   useEffect(() => {
@@ -139,6 +140,22 @@ export default function ElectricityBillReport() {
       }
       const userId = decoded.retailer_id || decoded.user_id || "";
       setRetailerId(userId);
+
+      // Fetch retailer profile
+      const fetchProfile = async () => {
+        try {
+          const profileRes = await axios.get(
+            `${import.meta.env.VITE_API_BASE_URL}/retailer/get/retailer/${userId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (profileRes.data.status === "success") {
+            setRetailerProfile(profileRes.data.data.retailer);
+          }
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+        }
+      };
+      fetchProfile();
     } catch (error) {
       toast({
         title: "Invalid token",
@@ -610,6 +627,44 @@ export default function ElectricityBillReport() {
     });
   };
 
+const numberToWords = (num: number): string => {
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  const convert = (n: number | string): string => {
+    n = Math.floor(Number(n));
+    if (n < 20) return a[n];
+    const s = n.toString();
+    return b[parseInt(s[0])] + ' ' + a[parseInt(s[1])];
+  };
+
+  if (!num || num === 0) return 'Zero Rupees Only';
+  
+  let str = '';
+  const n = num.toString().split('.');
+  
+  // Lakhs
+  const lakhs = Math.floor(num / 100000);
+  if (lakhs > 0) str += convert(lakhs) + 'Lakh ';
+  
+  // Thousands
+  const thousands = Math.floor((num % 100000) / 1000);
+  if (thousands > 0) str += convert(thousands) + 'Thousand ';
+  
+  // Hundreds
+  const hundreds = Math.floor((num % 1000) / 100);
+  if (hundreds > 0) str += convert(hundreds) + 'Hundred ';
+  
+  // Rest
+  const rest = Math.floor(num % 100);
+  if (rest > 0) {
+    if (str !== '') str += 'and ';
+    str += convert(rest);
+  }
+  
+  return str.trim() + ' Rupees Only';
+};
+
   const getStatusColor = (status: string) => {
     switch (status.toUpperCase()) {
       case "SUCCESS":
@@ -708,47 +763,136 @@ export default function ElectricityBillReport() {
   };
 
   const handlePrintReceipt = () => {
-    if (!receiptRef.current) return;
+    if (!receiptRef.current || !selectedTransaction) return;
 
     const printWindow = window.open("", "_blank");
     if (!printWindow) return;
 
-    const receiptHTML = receiptRef.current.outerHTML;
+    const data = selectedTransaction;
+    const amountInWords = numberToWords(typeof data.amount === 'string' ? parseFloat(data.amount) : data.amount);
 
-    printWindow.document.open();
     printWindow.document.write(`
       <!DOCTYPE html>
       <html>
         <head>
           <title>Receipt</title>
-          <script src="https://cdn.tailwindcss.com"></script>
           <style>
-            body {
-              background: white;
-              margin: 0;
-              padding: 20px;
-              -webkit-print-color-adjust: exact;
-              print-color-adjust: exact;
-            }
-            @page {
-              size: A4;
-              margin: 15mm;
-            }
+            body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #f0f2f5; margin: 0; padding: 40px 0; }
+            .action-bar { position: fixed; top: 0; left: 0; right: 0; background: #fff; padding: 10px 40px; border-bottom: 2px solid #ddd; display: flex; gap: 15px; z-index: 100; }
+            .btn { padding: 10px 20px; border-radius: 6px; border: none; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+            .btn-print { background: #000; color: #fff; }
+            .btn-close { background: #eee; color: #333; }
+            .receipt-container { width: 210mm; min-height: 148mm; margin: 0 auto; background: #fff; border: 1px solid #000; padding: 15px; color: #000; }
+            .header-logo { text-align: center; margin-bottom: 20px; border-bottom: 1px solid #000; padding-bottom: 15px; }
+            .header-logo h1 { font-size: 32px; font-weight: 800; letter-spacing: 4px; color: #000; margin: 0; }
+            .details-row { display: flex; border-bottom: 1px solid #000; }
+            .shop-details { flex: 1; padding: 15px; border-right: 1px solid #000; font-size: 14px; line-height: 1.5; }
+            .beneficiary-details { flex: 1.5; }
+            .bene-title { font-weight: bold; font-size: 11px; border-bottom: 1px solid #000; padding: 8px 15px; text-transform: uppercase; background: #f9f9f9; }
+            .bene-content { padding: 15px; font-size: 14px; line-height: 1.8; }
+            .bene-grid { display: grid; grid-template-columns: 140px 1fr; }
+            .bene-value { font-weight: bold; }
+            table { width: 100%; border-collapse: collapse; margin-top: 0; }
+            th { border: 1px solid #000; padding: 8px; font-size: 11px; background: #f0f0f0; text-transform: uppercase; }
+            td { border: 1px solid #000; padding: 10px; font-size: 14px; }
+            .text-center { text-align: center; }
+            .text-right { text-align: right; }
+            .totals-row td { font-weight: bold; }
+            .amount-words { font-size: 20px; font-weight: bold; text-align: right; padding: 15px 0; }
+            .footer-section { margin-top: 15px; display: flex; justify-content: space-between; border-top: 1px solid #000; padding-top: 15px; font-size: 13px; }
             @media print {
-              body {
-                margin: 0;
-              }
+              body { background: white; padding: 0; }
+              .action-bar { display: none !important; }
+              .receipt-container { border: 1px solid #000; margin: 0; width: 100%; box-shadow: none; }
+              @page { size: A4 landscape; margin: 10mm; }
             }
           </style>
         </head>
         <body>
-          ${receiptHTML}
+          <div class="action-bar">
+            <button class="btn btn-print" onclick="window.print()">Print Receipt</button>
+            <button class="btn btn-close" onclick="window.close()">Close</button>
+          </div>
+          <div class="receipt-container">
+            <div class="header-logo">
+              <h1>PAYBAZAAR</h1>
+              <div style="font-size: 12px; margin-top: -5px; font-weight: bold; color: #333;">TECHNOLOGIES</div>
+            </div>
+
+            <div class="details-row">
+              <div class="shop-details">
+                <div style="font-weight: bold; font-size: 18px; color: #000; margin-bottom: 5px;">${retailerProfile?.business_name || 'Retailer Shop'}</div>
+                <div style="font-size: 14px; margin-bottom: 2px;">Prop: ${retailerProfile?.retailer_name || 'Retailer Name'}</div>
+                <div style="font-size: 14px; margin-bottom: 2px;">Mob: ${retailerProfile?.retailer_phone || '-'}</div>
+                <div style="font-size: 13px; color: #444;">ID: ${retailerProfile?.retailer_id || '-'}</div>
+              </div>
+              <div class="beneficiary-details">
+                <div class="bene-title">Transaction Detail</div>
+                <div class="bene-content">
+                  <div class="bene-grid">
+                    <span class="bene-label">Customer ID</span>
+                    <span class="bene-value">: ${data.customer_id}</span>
+                    
+                    <span class="bene-label">Operator</span>
+                    <span class="bene-value">: ${data.operator_name.toUpperCase()}</span>
+                    
+                    <span class="bene-label">Email</span>
+                    <span class="bene-value">: ${data.customer_email || '-'}</span>
+                    
+                    <span class="bene-label">Status</span>
+                    <span class="bene-value">: ${data.transaction_status.toUpperCase()}</span>
+                    
+                    <span class="bene-label">Date Time</span>
+                    <span class="bene-value">: ${new Date(data.created_at).toLocaleString()}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <table>
+              <thead>
+                <tr>
+                  <th style="width: 50px;">S.No</th>
+                  <th>Description</th>
+                  <th>Reference ID</th>
+                  <th style="width: 120px;">Amount (Rs.)</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr style="height: 70px;">
+                  <td class="text-center" style="vertical-align: top;">1</td>
+                  <td style="vertical-align: top;">
+                    Electricity Bill Payment ${data.transaction_status.toUpperCase()}.<br/>
+                    ID: ${data.electricity_bill_transaction_id}<br/>
+                    Order: ${data.order_id || '-'}
+                  </td>
+                  <td class="text-center" style="vertical-align: top;">${data.partner_request_id || '-'}</td>
+                  <td class="text-right" style="vertical-align: top;">${formatAmount(data.amount)}</td>
+                </tr>
+                <tr class="totals-row">
+                  <td colspan="3" class="text-right">GRAND TOTAL</td>
+                  <td class="text-right">₹ ${formatAmount(data.amount)}</td>
+                </tr>
+              </tbody>
+            </table>
+
+            <div class="amount-words">${amountInWords}</div>
+
+            <div class="footer-section">
+              <div style="line-height: 1.8;">
+                Thank you!<br/>
+                <strong>Customer Services:</strong>
+              </div>
+              <div class="shop-footer" style="text-align: right;">
+                <div style="font-size: 10px; color: #333; margin-bottom: 2px;">PLATFORM BY</div>
+                <div style="font-weight: bold; font-size: 14px; color: #000;">Paybazaar Technologies</div>
+                <div style="font-size: 11px; color: #555;">Support: info@paybazaar.in</div>
+              </div>
+            </div>
+          </div>
           <script>
-            window.onload = () => {
-              window.focus();
-              window.print();
-              window.close();
-            };
+            function doPrint() { window.focus(); window.print(); }
+            if (document.readyState === 'complete') { doPrint(); } else { window.onload = doPrint; }
           </script>
         </body>
       </html>
@@ -1234,156 +1378,91 @@ export default function ElectricityBillReport() {
               ref={receiptRef}
               className="bg-white p-8 space-y-6 border rounded-lg"
             >
-              {/* Header */}
-              <div className="text-center border-b pb-6">
-                <h2 className="text-2xl font-bold text-gray-800">
-                  ELECTRICITY BILL PAYMENT RECEIPT
-                </h2>
-                <p className="text-sm text-black font-bold">
-                  Paybazaar Technologies Pvt. Ltd.
-                </p>
+              {/* Header Logo */}
+              <div className="text-center border-b border-black pb-3">
+                <h2 className="text-3xl font-extrabold tracking-widest text-black">PAYBAZAAR</h2>
+                <p className="text-[11px] font-bold text-gray-700 tracking-[0.2em]">— TECHNOLOGIES —</p>
               </div>
 
-              {/* Transaction Status */}
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className="text-xs text-black mb-1">UTR Number</p>
-                  <p className="font-mono text-sm font-semibold">
-                    {selectedTransaction.electricity_bill_transaction_id}
-                  </p>
+              {/* Shop and Transaction Row */}
+              <div className="flex border-b border-black -mx-4">
+                <div className="flex-1 p-4 border-r border-black text-sm">
+                  <p className="font-bold text-lg">{retailerProfile?.business_name || 'Retailer Shop'}</p>
+                  <p>{retailerProfile?.retailer_name || 'Retailer Name'}</p>
+                  <p>{retailerProfile?.retailer_phone || '-'}</p>
+                  <p className="text-xs text-gray-500 mt-1">ID: {retailerProfile?.retailer_id || '-'}</p>
                 </div>
-
-                <div
-                  className={`text-center py-3 rounded-lg border-2 ${getStatusColorForReceipt(
-                    selectedTransaction.transaction_status
-                  )}`}
-                >
-                  <p className="font-bold text-lg uppercase">
-                    {selectedTransaction.transaction_status}
-                  </p>
-                </div>
-              </div>
-
-              {/* Transaction Details */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-black pb-2 border-b">
-                  Transaction Details
-                </h3>
-
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-black">Date & Time</p>
-                    <p className="font-medium">
-                      {formatDate(selectedTransaction.created_at)}
-                    </p>
+                <div className="flex-[1.5]">
+                  <div className="bg-gray-50 border-b border-black px-4 py-2 text-[10px] font-bold uppercase">
+                    Transaction Detail
                   </div>
-
-                  <div>
-                    <p className="text-black">Customer ID</p>
-                    <p className="font-medium font-mono">
-                      {selectedTransaction.customer_id}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">Customer Email</p>
-                    <p className="font-medium text-xs">
-                      {selectedTransaction.customer_email}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">Operator</p>
-                    <p className="font-medium">
-                      {selectedTransaction.operator_name}
-                    </p>
-                  </div>
-
-                  {selectedTransaction.order_id && (
-                    <div>
-                      <p className="text-black">Order ID</p>
-                      <p className="font-medium font-mono text-xs">
-                        {selectedTransaction.order_id}
-                      </p>
+                  <div className="p-4 text-sm space-y-2">
+                    <div className="grid grid-cols-[120px_1fr]">
+                      <span>Customer ID</span>
+                      <span className="font-bold">: {selectedTransaction.customer_id}</span>
+                      
+                      <span>Operator</span>
+                      <span className="font-bold">: {selectedTransaction.operator_name.toUpperCase()}</span>
+                      
+                      <span>Email</span>
+                      <span className="font-bold">: {selectedTransaction.customer_email || '-'}</span>
+                      
+                      <span>Date Time</span>
+                      <span className="font-bold">: {formatDate(selectedTransaction.created_at)}</span>
                     </div>
-                  )}
-
-                  <div>
-                    <p className="text-black">Partner Request ID</p>
-                    <p className="font-medium font-mono text-xs">
-                      {selectedTransaction.partner_request_id}
-                    </p>
                   </div>
                 </div>
               </div>
 
-              {/* Amount Details */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-black pb-2 border-b">
-                  Amount Details
-                </h3>
+              {/* Items Table */}
+              <div className="-mx-4">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="border-y border-black p-2 bg-gray-50 text-[10px] uppercase w-[50px]">S.No</th>
+                      <th className="border border-black p-2 bg-gray-50 text-[10px] uppercase text-left">Description</th>
+                      <th className="border border-black p-2 bg-gray-50 text-[10px] uppercase">Reference ID</th>
+                      <th className="border-y border-black p-2 bg-gray-50 text-[10px] uppercase w-[120px] text-right">Amount (Rs.)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ height: '70px' }}>
+                      <td className="border-r border-black p-3 text-center align-top">1</td>
+                      <td className="border-r border-black p-3 align-top">
+                        Electricity Bill Payment SUCCESS.<br/>
+                        ID: {selectedTransaction.electricity_bill_transaction_id}
+                      </td>
+                      <td className="border-r border-black p-3 text-center align-top">
+                        {selectedTransaction.partner_request_id || '-'}
+                      </td>
+                      <td className="p-3 text-right align-top font-bold">
+                        {formatAmount(selectedTransaction.amount)}
+                      </td>
+                    </tr>
+                    <tr className="border-t border-black font-bold">
+                      <td colSpan={3} className="border-r border-black p-2 text-right">GRAND TOTAL</td>
+                      <td className="p-2 text-right">₹ {formatAmount(selectedTransaction.amount)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-black font-medium">
-                      Bill Amount
-                    </span>
-                    <span className="font-bold text-2xl text-black">
-                      ₹{formatAmount(selectedTransaction.amount)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-gray-600 text-sm">Before Balance</span>
-                    <span className="font-semibold text-gray-700">
-                      ₹{formatAmount(selectedTransaction.before_balance)}
-                    </span>
-                  </div>
-
-                  <div className="flex justify-between items-center py-1">
-                    <span className="text-gray-600 text-sm">After Balance</span>
-                    <span className="font-semibold text-gray-700">
-                      ₹{formatAmount(selectedTransaction.after_balance)}
-                    </span>
-                  </div>
-
-                  {selectedTransaction.commision > 0 && (
-                    <div className="flex justify-between items-center py-1">
-                      <span className="text-green-600 text-sm">Commission Earned</span>
-                      <span className="font-semibold text-green-600">
-                        ₹{formatAmount(selectedTransaction.commision)}
-                      </span>
-                    </div>
-                  )}
-                </div>
+              {/* Amount in Words */}
+              <div className="text-right text-lg font-bold py-2">
+                {numberToWords(typeof selectedTransaction.amount === "string" ? parseFloat(selectedTransaction.amount) : selectedTransaction.amount)}
               </div>
 
               {/* Footer */}
-              <div className="border-t pt-6 text-center space-y-2">
-                <p className="text-xs text-gray-500">
-                  This is a computer-generated receipt and does not require a
-                  signature.
-                </p>
-                <p className="text-xs text-gray-500">
-                  For any technical queries, contact{" "}
-                  <a
-                    href="https://www.gvinfotech.org"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    www.gvinfotech.org
-                  </a>{" "}
-                  or{" "}
-                  <a
-                    href="https://www.paybazaar.in"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    www.paybazaar.in
-                  </a>
-                </p>
+              <div className="flex justify-between items-end border-t border-black pt-4">
+                <div className="text-xs space-y-1">
+                  <p>Thank you!</p>
+                  <p className="font-bold">Customer Services:</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-500 uppercase font-semibold">Platform By</p>
+                  <p className="font-bold text-lg text-black">Paybazaar Technologies</p>
+                  <p className="text-[10px] text-gray-600">www.paybazaar.in</p>
+                </div>
               </div>
             </div>
           )}

@@ -37,7 +37,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { ArrowLeft, Eye, CheckCircle2, Trash2, X, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Eye, CheckCircle2, Trash2, X, AlertTriangle, Printer } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { AddBeneficiaryDialog } from "@/components/dialogs/AddBeneficiaryDialog";
 import { useToast } from "@/hooks/use-toast";
@@ -75,6 +75,9 @@ interface PayoutReceiptData {
   transactionId: string;
   status: string;
   createdAt: string;
+  retailerName?: string;
+  retailerBusinessName?: string;
+  retailerId?: string;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -94,119 +97,247 @@ const writeReceiptToTab = (tab: Window, data: PayoutReceiptData) => {
   const fmtAmount = (v: number) =>
     v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const statusUp = data.status.toUpperCase();
+  const numberToWords = (num: number): string => {
+    const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+    const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
 
-  type SC = { bg: string; border: string; text: string };
-  const statusColors: Record<string, SC> = {
-    SUCCESS:   { bg: "#f0fdf4", border: "#86efac", text: "#16a34a" },
-    PENDING:   { bg: "#fefce8", border: "#fde047", text: "#ca8a04" },
-    FAILED:    { bg: "#fef2f2", border: "#fca5a5", text: "#dc2626" },
-    INITIATED: { bg: "#eff6ff", border: "#93c5fd", text: "#1d4ed8" },
+    const numStr = num.toString().split('.')[0];
+    if (numStr === '0') return 'Zero';
+    
+    const n = ('000000000' + numStr).substr(-9).match(/^(\d{2})(\d{2})(\d{2})(\d{1})(\d{2})$/);
+    if (!n) return ''; 
+    
+    let str = '';
+    str += (Number(n[1]) != 0) ? (a[Number(n[1])] || b[n[1][0]] + ' ' + a[n[1][1]]) + 'Crore ' : '';
+    str += (Number(n[2]) != 0) ? (a[Number(n[2])] || b[n[2][0]] + ' ' + a[n[2][1]]) + 'Lakh ' : '';
+    str += (Number(n[3]) != 0) ? (a[Number(n[3])] || b[n[3][0]] + ' ' + a[n[3][1]]) + 'Thousand ' : '';
+    str += (Number(n[4]) != 0) ? (a[Number(n[4])] || b[n[4][0]] + ' ' + a[n[4][1]]) + 'Hundred ' : '';
+    str += (Number(n[5]) != 0) ? ((str != '') ? 'and ' : '') + (a[Number(n[5])] || b[n[5][0]] + ' ' + a[n[5][1]]) : '';
+    return str.trim() + ' Rupees';
   };
-  const sc: SC = statusColors[statusUp] ?? { bg: "#f9fafb", border: "#d1d5db", text: "#4b5563" };
 
-  const row = (label: string, value: string) => `
-    <div class="row">
-      <span class="r-label">${label}</span>
-      <span class="r-value">${value}</span>
-    </div>`;
+  const statusUp = data.status.toUpperCase();
+  const amountInWords = numberToWords(data.amount);
 
   const html = `<!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="UTF-8"/>
   <meta name="viewport" content="width=device-width,initial-scale=1.0"/>
-  <title>Payout Receipt</title>
+  <title>Receipt - ${data.transactionId}</title>
   <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     body {
       background: #f3f4f6;
-      font-family: 'Segoe UI', Arial, sans-serif;
-      padding: 28px 16px 48px;
+      font-family: Arial, sans-serif;
+      padding: 20px;
+      color: #000;
       -webkit-print-color-adjust: exact;
       print-color-adjust: exact;
-      color: #111827;
     }
     .action-bar { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
-    .btn { padding: 8px 26px; border-radius: 7px; font-size: 0.88rem; font-weight: 600; cursor: pointer; border: none; letter-spacing: 0.01em; }
-    .btn-print { background: #4f46e5; color: #fff; }
-    .btn-print:hover { background: #4338ca; }
-    .btn-close { background: #e5e7eb; color: #374151; }
-    .btn-close:hover { background: #d1d5db; }
-    .receipt { width: 148mm; margin: 0 auto; background: #fff; border: 1px solid #e5e7eb; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 14px rgba(0,0,0,0.09); }
-    .r-header { text-align: center; padding: 22px 28px 16px; border-bottom: 1.5px solid #e5e7eb; }
-    .r-header h1 { font-size: 1.28rem; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #111827; }
-    .r-header .company { font-size: 0.78rem; font-weight: 700; color: #374151; margin-top: 4px; }
-    .id-block { text-align: center; padding: 14px 28px 6px; }
-    .id-label { font-size: 0.68rem; color: #6b7280; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 3px; }
-    .id-value { font-family: 'Courier New', monospace; font-size: 0.9rem; font-weight: 700; color: #111827; }
-    .status-box { margin: 10px 28px 16px; padding: 10px 0; border-radius: 8px; border: 2px solid ${sc.border}; background: ${sc.bg}; color: ${sc.text}; text-align: center; font-size: 0.95rem; font-weight: 800; letter-spacing: 0.10em; text-transform: uppercase; }
-    .section { padding: 0 28px 14px; }
-    .section-title { font-size: 0.78rem; font-weight: 700; color: #111827; padding-bottom: 7px; border-bottom: 1.5px solid #e5e7eb; margin-bottom: 2px; }
-    .row { display: flex; justify-content: space-between; align-items: flex-start; padding: 8px 0; border-bottom: 1px solid #f3f4f6; gap: 16px; font-size: 0.82rem; }
-    .row:last-child { border-bottom: none; }
-    .r-label { color: #6b7280; flex-shrink: 0; }
-    .r-value { font-weight: 700; color: #111827; text-align: right; word-break: break-word; }
-    .amount-section { padding: 0 28px 18px; }
-    .amount-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 14px; border: 1.5px solid #e5e7eb; border-radius: 7px; background: #f9fafb; margin-top: 7px; }
-    .a-label { font-size: 0.85rem; font-weight: 600; color: #374151; }
-    .a-value { font-size: 1.5rem; font-weight: 800; color: #111827; }
-    .r-footer { border-top: 1.5px solid #e5e7eb; padding: 12px 28px; text-align: center; background: #fafafa; }
-    .r-footer p { font-size: 0.67rem; color: #9ca3af; line-height: 1.5; margin-bottom: 2px; }
-    .r-footer a { color: #4f46e5; text-decoration: none; }
+    .btn { padding: 10px 20px; border-radius: 5px; font-weight: bold; cursor: pointer; border: none; }
+    .btn-print { background: #000; color: #fff; }
+    .btn-close { background: #ddd; color: #333; }
+    
+    .receipt-container {
+      width: 210mm;
+      min-height: 148mm;
+      margin: 0 auto;
+      background: #fff;
+      border: 1px solid #000;
+      padding: 15px;
+      color: #000;
+    }
+    .header-logo {
+      text-align: center;
+      margin-bottom: 20px;
+      border-bottom: 1px solid #000;
+      padding-bottom: 15px;
+    }
+    .header-logo h1 {
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 4px;
+      color: #000;
+    }
+    .details-row {
+      display: flex;
+      border-bottom: 1px solid #000;
+    }
+    .shop-details {
+      flex: 1;
+      padding: 15px;
+      border-right: 1px solid #000;
+      font-size: 14px;
+      line-height: 1.5;
+    }
+    .beneficiary-details {
+      flex: 1.5;
+    }
+    .bene-title {
+      font-weight: bold;
+      font-size: 11px;
+      border-bottom: 1px solid #000;
+      padding: 8px 15px;
+      text-transform: uppercase;
+      background: #f9f9f9;
+    }
+    .bene-content {
+      padding: 15px;
+      font-size: 14px;
+      line-height: 1.8;
+    }
+    .bene-grid {
+      display: grid;
+      grid-template-columns: 140px 1fr;
+    }
+    .bene-value {
+      font-weight: bold;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 0;
+    }
+    th {
+      border: 1px solid #000;
+      padding: 8px;
+      font-size: 11px;
+      background: #f0f0f0;
+      text-transform: uppercase;
+    }
+    td {
+      border: 1px solid #000;
+      padding: 10px;
+      font-size: 14px;
+    }
+    .text-center { text-align: center; }
+    .text-right { text-align: right; }
+    .totals-row td {
+      font-weight: bold;
+    }
+    .amount-words {
+      font-size: 20px;
+      font-weight: bold;
+      text-align: right;
+      padding: 15px 0;
+    }
+    .footer-section {
+      margin-top: 15px;
+      display: flex;
+      justify-content: space-between;
+      border-top: 1px solid #000;
+      padding-top: 15px;
+      font-size: 13px;
+    }
+    .shop-footer {
+      text-align: right;
+    }
     @media print {
       body { background: white; padding: 0; }
       .action-bar { display: none !important; }
-      .receipt { width: 148mm; border: none; border-radius: 0; box-shadow: none; margin: 0 auto; }
-      @page { size: 148mm auto; margin: 8mm; }
+      .receipt-container { border: 1px solid #000; margin: 0; width: 100%; box-shadow: none; }
+      @page { size: A4 landscape; margin: 10mm; }
     }
   </style>
 </head>
 <body>
   <div class="action-bar">
-    <button class="btn btn-print" onclick="window.print()">🖨️ &nbsp;Print Receipt</button>
-    <button class="btn btn-close" onclick="window.close()">✕ &nbsp;Close</button>
+    <button class="btn btn-print" onclick="window.print()">Print Receipt</button>
+    <button class="btn btn-close" onclick="window.close()">Close</button>
   </div>
-  <div class="receipt">
-    <div class="r-header">
-      <h1>Payout Receipt</h1>
-      <div class="company">Paybazaar Technologies Pvt. Ltd.</div>
+  <div class="receipt-container">
+    <div class="header-logo">
+      <h1>PAYBAZAAR</h1>
+      <div style="font-size: 12px; margin-top: -5px; font-weight: bold; color: #333;">TECHNOLOGIES</div>
     </div>
-    <div class="id-block">
-      <div class="id-label">UTR Number</div>
-      <div class="id-value">${data.transactionId}</div>
-    </div>
-    <div class="status-box">${statusUp}</div>
-    <div class="section">
-      <div class="section-title">Beneficiary Details</div>
-      ${row("Beneficiary Name", data.beneficiaryName)}
-      ${row("Bank Name",        data.bankName)}
-      ${row("Account Number",   data.accountNumber)}
-      ${row("IFSC Code",        data.ifscCode)}
-      ${row("Mobile Number",    data.mobileNumber)}
-    </div>
-    <div class="section">
-      <div class="section-title">Transaction Details</div>
-      ${row("Date &amp; Time", formatDate(data.createdAt))}
-      ${row("Transfer Type",   data.transferType)}
-    </div>
-    <div class="amount-section">
-      <div class="section-title">Amount Details</div>
-      <div class="amount-row">
-        <span class="a-label">Transfer Amount</span>
-        <span class="a-value">₹${fmtAmount(data.amount)}</span>
+
+    <div class="details-row">
+      <div class="shop-details">
+        <div style="font-weight: bold; font-size: 18px; color: #000; margin-bottom: 5px;">${data.retailerBusinessName || 'PAYBAZAAR'}</div>
+        <div style="font-size: 14px; margin-bottom: 2px;">Prop: ${data.retailerName || 'Retailer'}</div>
+        <div style="font-size: 14px; margin-bottom: 2px;">Mob: ${data.mobileNumber}</div>
+        <div style="font-size: 13px; color: #444;">ID: ${data.retailerId || '-'}</div>
+      </div>
+      <div class="beneficiary-details">
+        <div class="bene-title">Beneficiary Detail</div>
+        <div class="bene-content">
+          <div class="bene-grid">
+            <span class="bene-label">Beneficiary Name</span>
+            <span class="bene-value">: ${data.beneficiaryName.toUpperCase()}</span>
+            
+            <span class="bene-label">Sender Number</span>
+            <span class="bene-value">: ${data.mobileNumber}</span>
+            
+            <span class="bene-label">Bank</span>
+            <span class="bene-value">: ${data.bankName.toUpperCase()}</span>
+            
+            <span class="bene-label">Account No.</span>
+            <span class="bene-value">: ${data.accountNumber} (${data.ifscCode})</span>
+            
+            <span class="bene-label">Date Time</span>
+            <span class="bene-value">: ${formatDate(data.createdAt)}</span>
+          </div>
+        </div>
       </div>
     </div>
-    <div class="r-footer">
-      <p>This is a computer-generated receipt and does not require a signature.</p>
-      <p>
-        For any technical queries, contact
-        <a href="https://www.gvinfotech.org" target="_blank">www.gvinfotech.org</a>
-        or
-        <a href="https://www.paybazaar.in" target="_blank">www.paybazaar.in</a>
-      </p>
+
+    <table>
+      <thead>
+        <tr>
+          <th style="width: 50px;">S.No</th>
+          <th>Description</th>
+          <th>Bank Ref ID</th>
+          <th style="width: 120px;">Amount (Rs.)</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr style="height: 70px;">
+          <td class="text-center" style="vertical-align: top;">1</td>
+          <td style="vertical-align: top;">
+            ${data.transferType} Transaction SUCCESS.<br/>
+            ${data.transactionId}
+          </td>
+          <td class="text-center" style="vertical-align: top;">-</td>
+          <td class="text-right" style="vertical-align: top;">${fmtAmount(data.amount)}</td>
+        </tr>
+        <tr class="totals-row">
+          <td colspan="3" class="text-right">SUBTOTAL</td>
+          <td class="text-right">₹ ${fmtAmount(data.amount)}</td>
+        </tr>
+        <tr class="totals-row">
+          <td colspan="3" class="text-right">GRAND TOTAL</td>
+          <td class="text-right">₹ ${fmtAmount(data.amount)}</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="amount-words">${amountInWords}</div>
+
+    <div class="footer-section">
+      <div style="line-height: 1.8;">
+        Thank you!<br/>
+        <strong>Customer Services:</strong>
+      </div>
+      <div class="shop-footer">
+        <div style="font-size: 10px; color: #333; margin-bottom: 2px;">PLATFORM BY</div>
+        <div style="font-weight: bold; font-size: 14px; color: #000;">Paybazaar Technologies</div>
+        <div style="font-size: 11px; color: #555;">Support: info@paybazaar.in</div>
+      </div>
     </div>
   </div>
+  <script>
+    function doPrint() {
+      window.focus();
+      window.print();
+    }
+    if (document.readyState === 'complete') {
+      doPrint();
+    } else {
+      window.onload = doPrint;
+    }
+  </script>
 </body>
 </html>`;
 
@@ -243,6 +374,7 @@ export default function Settlement() {
   const [showSuccessAnimation, setShowSuccessAnimation] = useState(false);
   const [transactionId, setTransactionId] = useState<string | null>(null);
   const [pendingReceiptData, setPendingReceiptData] = useState<PayoutReceiptData | null>(null);
+  const [retailerProfile, setRetailerProfile] = useState<any>(null);
 
   const [payFormData, setPayFormData] = useState({
     transactionType: "",
@@ -286,6 +418,22 @@ export default function Settlement() {
     try {
       const decoded: DecodedToken = jwtDecode(token);
       setTokenData(decoded);
+      
+      // Fetch retailer profile once token is available
+      const fetchProfile = async () => {
+        try {
+          const profileRes = await axios.get(
+            `${import.meta.env.VITE_API_BASE_URL}/retailer/get/retailer/${decoded.user_id}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (profileRes.data.status === "success") {
+            setRetailerProfile(profileRes.data.data.retailer);
+          }
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+        }
+      };
+      fetchProfile();
     } catch (error) {
       console.error("Error decoding token:", error);
       toast({ title: "⚠️ Session Error", description: "Unable to verify your session. Please log in again.", variant: "destructive" });
@@ -295,13 +443,7 @@ export default function Settlement() {
   useEffect(() => {
     if (showSuccessAnimation && transactionId) {
       const timer = setTimeout(() => {
-        setShowSuccessAnimation(false);
-        // Open receipt tab only AFTER animation fades out
-        if (pendingReceiptData) {
-          const tab = window.open("", "_blank");
-          if (tab) writeReceiptToTab(tab, pendingReceiptData);
-          setPendingReceiptData(null);
-        }
+        // setShowSuccessAnimation(false); // Don't auto-hide, let user see success and click button
       }, 3500);
       return () => clearTimeout(timer);
     }
@@ -476,6 +618,9 @@ export default function Settlement() {
         transactionId:   txnId,
         status:          "SUCCESS",
         createdAt:       new Date().toISOString(),
+        retailerName:    retailerProfile?.retailer_name || tokenData?.user_name,
+        retailerBusinessName: retailerProfile?.business_name,
+        retailerId:      retailerProfile?.retailer_id || tokenData?.user_id,
       });
 
       setPayFormData({ transactionType: "", amount: "" });
@@ -697,24 +842,48 @@ export default function Settlement() {
       {/* Success animation */}
       {showSuccessAnimation && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm">
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center justify-center">
+          <div className="relative flex flex-col items-center">
+            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
               {[...Array(12)].map((_, i) => (
                 <div key={i} className="absolute w-3 h-3 bg-gradient-to-r from-green-400 to-emerald-400 rounded-full animate-ping"
                   style={{ animationDelay: `${i * 0.1}s`, animationDuration: '1.5s', left: `${50 + 40 * Math.cos((i * Math.PI * 2) / 12)}%`, top: `${50 + 40 * Math.sin((i * Math.PI * 2) / 12)}%` }} />
               ))}
             </div>
-            <div className="relative bg-white rounded-3xl shadow-2xl p-12 max-w-md mx-4 animate-scale-in">
-              <div className="relative mx-auto w-32 h-32 mb-6">
-                <div className="absolute inset-0 rounded-full bg-gradient-to-r from-green-400 to-emerald-500 animate-pulse" />
-                <div className="absolute inset-2 rounded-full bg-white flex items-center justify-center">
-                  <CheckCircle2 className="w-20 h-20 text-green-500 animate-check-draw" strokeWidth={3} />
-                </div>
+            
+            <div className="bg-white p-8 rounded-2xl shadow-2xl flex flex-col items-center max-w-sm w-full mx-4 border border-green-100 relative">
+              <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mb-6 border-4 border-white shadow-inner">
+                <CheckCircle2 className="w-12 h-12 text-green-500" />
               </div>
-              <div className="text-center space-y-3">
-                <h2 className="text-3xl font-bold text-gray-900">Payment Successful! 🎉</h2>
-                <p className="text-lg text-gray-600">Your payout has been processed successfully</p>
-                {transactionId && <p className="text-sm text-gray-500 font-mono">Transaction ID: {transactionId}</p>}
+              <h2 className="text-2xl font-bold text-gray-900 mb-2">Payout Successful!</h2>
+              <p className="text-gray-500 text-center mb-6">
+                Your transaction has been processed successfully.
+                <br />
+                <span className="text-xs font-mono mt-2 block bg-gray-50 p-2 rounded">ID: {transactionId}</span>
+              </p>
+              
+              <div className="flex flex-col gap-3 w-full">
+                <Button 
+                  onClick={() => {
+                    if (pendingReceiptData) {
+                      const tab = window.open("", "_blank");
+                      if (tab) writeReceiptToTab(tab, pendingReceiptData);
+                    }
+                  }}
+                  className="w-full bg-black hover:bg-gray-800 text-white py-6 text-lg font-semibold h-auto"
+                >
+                  <Eye className="mr-2 h-5 w-5" />
+                  View & Print Receipt
+                </Button>
+                <Button 
+                  onClick={() => {
+                    setShowSuccessAnimation(false);
+                    setPendingReceiptData(null);
+                  }}
+                  variant="ghost" 
+                  className="w-full text-gray-500 py-3"
+                >
+                  Close
+                </Button>
               </div>
             </div>
           </div>

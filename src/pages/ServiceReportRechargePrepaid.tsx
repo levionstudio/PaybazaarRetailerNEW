@@ -99,6 +99,8 @@ export default function MobileRechargeReport() {
   const [selectedTransaction, setSelectedTransaction] =
     useState<MobileRechargeTransaction | null>(null);
   const [isReceiptOpen, setIsReceiptOpen] = useState(false);
+  const [tokenData, setTokenData] = useState<any>(null);
+  const [retailerProfile, setRetailerProfile] = useState<any>(null);
 
   // Decode token and get retailer ID
   useEffect(() => {
@@ -127,6 +129,23 @@ export default function MobileRechargeReport() {
       }
       const userId = decoded.retailer_id || decoded.user_id || "";
       setRetailerId(userId);
+      setTokenData(decoded);
+
+      // Fetch retailer profile
+      const fetchProfile = async () => {
+        try {
+          const profileRes = await axios.get(
+            `${import.meta.env.VITE_API_BASE_URL}/retailer/get/retailer/${userId}`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (profileRes.data.status === "success") {
+            setRetailerProfile(profileRes.data.data.retailer);
+          }
+        } catch (err) {
+          console.error("Profile fetch error:", err);
+        }
+      };
+      fetchProfile();
     } catch (error) {
       toast({
         title: "Invalid token",
@@ -502,6 +521,44 @@ const formatAmount = (amount: number | string | null | undefined) => {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+};
+
+const numberToWords = (num: number): string => {
+  const a = ['', 'One ', 'Two ', 'Three ', 'Four ', 'Five ', 'Six ', 'Seven ', 'Eight ', 'Nine ', 'Ten ', 'Eleven ', 'Twelve ', 'Thirteen ', 'Fourteen ', 'Fifteen ', 'Sixteen ', 'Seventeen ', 'Eighteen ', 'Nineteen '];
+  const b = ['', '', 'Twenty', 'Thirty', 'Forty', 'Fifty', 'Sixty', 'Seventy', 'Eighty', 'Ninety'];
+
+  const convert = (n: number | string): string => {
+    n = Math.floor(Number(n));
+    if (n < 20) return a[n];
+    const s = n.toString();
+    return b[parseInt(s[0])] + ' ' + a[parseInt(s[1])];
+  };
+
+  if (!num || num === 0) return 'Zero Rupees Only';
+  
+  let str = '';
+  const n = num.toString().split('.');
+  
+  // Lakhs
+  const lakhs = Math.floor(num / 100000);
+  if (lakhs > 0) str += convert(lakhs) + 'Lakh ';
+  
+  // Thousands
+  const thousands = Math.floor((num % 100000) / 1000);
+  if (thousands > 0) str += convert(thousands) + 'Thousand ';
+  
+  // Hundreds
+  const hundreds = Math.floor((num % 1000) / 100);
+  if (hundreds > 0) str += convert(hundreds) + 'Hundred ';
+  
+  // Rest
+  const rest = Math.floor(num % 100);
+  if (rest > 0) {
+    if (str !== '') str += 'and ';
+    str += convert(rest);
+  }
+  
+  return str.trim() + ' Rupees Only';
 };
 
   const getStatusColor = (status: string) => {
@@ -1133,133 +1190,91 @@ const formatAmount = (amount: number | string | null | undefined) => {
               ref={receiptRef}
               className="bg-white p-8 space-y-6 border rounded-lg"
             >
-              {/* Header */}
-              <div className="text-center border-b pb-6">
-                <h2 className="text-2xl font-bold text-gray-800">
-                  MOBILE RECHARGE RECEIPT
-                </h2>
-                <p className="text-sm text-black font-bold">
-                  Paybazaar Technologies Pvt. Ltd.
-                </p>
+              {/* Header Logo */}
+              <div className="text-center border-b border-black pb-3">
+                <h2 className="text-3xl font-extrabold tracking-widest text-black">PAYBAZAAR</h2>
+                <p className="text-[11px] font-bold text-gray-700 tracking-[0.2em]">— TECHNOLOGIES —</p>
               </div>
 
-              {/* Transaction Status */}
-              <div className="space-y-3">
-                <div className="text-center">
-                  <p className="text-xs text-black mb-1">UTR Number</p>
-                  <p className="font-mono text-sm font-semibold">
-                    {selectedTransaction.mobile_recharge_transaction_id}
-                  </p>
+              {/* Shop and Transaction Row */}
+              <div className="flex border-b border-black -mx-4">
+                <div className="flex-1 p-4 border-r border-black text-sm">
+                  <p className="font-bold text-lg">{retailerProfile?.business_name || 'Retailer Shop'}</p>
+                  <p>{retailerProfile?.retailer_name || 'Retailer Name'}</p>
+                  <p>{retailerProfile?.retailer_phone || '-'}</p>
+                  <p className="text-xs text-gray-500 mt-1">ID: {retailerProfile?.retailer_id || '-'}</p>
                 </div>
-
-                <div
-                  className={`text-center py-3 rounded-lg border-2 ${getStatusColorForReceipt(
-                    selectedTransaction.status
-                  )}`}
-                >
-                  <p className="font-bold text-lg uppercase">
-                    {selectedTransaction.status}
-                  </p>
-                </div>
-              </div>
-
-              {/* Transaction Details */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-black pb-2 border-b">
-                  Transaction Details
-                </h3>
-
-                <div className="grid grid-cols-2 gap-4 text-sm">
-                  <div>
-                    <p className="text-black">Date & Time</p>
-                    <p className="font-medium">
-                      {formatDate(selectedTransaction.created_at)}
-                    </p>
+                <div className="flex-[1.5]">
+                  <div className="bg-gray-50 border-b border-black px-4 py-2 text-[10px] font-bold uppercase">
+                    Transaction Detail
                   </div>
-
-                  <div>
-                    <p className="text-black">Mobile Number</p>
-                    <p className="font-medium font-mono">
-                      {selectedTransaction.mobile_number}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">Operator</p>
-                    <p className="font-medium">
-                      {selectedTransaction.operator_name}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">Circle</p>
-                    <p className="font-medium">
-                      {selectedTransaction.circle_name}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">Recharge Type</p>
-                    <p className="font-medium">
-                      {selectedTransaction.recharge_type === "1"
-                        ? "Prepaid"
-                        : "Postpaid"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <p className="text-black">Partner Request ID</p>
-                    <p className="font-medium font-mono text-xs">
-                      {selectedTransaction.partner_request_id}
-                    </p>
+                  <div className="p-4 text-sm space-y-2">
+                    <div className="grid grid-cols-[120px_1fr]">
+                      <span>Mobile Number</span>
+                      <span className="font-bold">: {selectedTransaction.mobile_number}</span>
+                      
+                      <span>Operator</span>
+                      <span className="font-bold">: {selectedTransaction.operator_name.toUpperCase()}</span>
+                      
+                      <span>Circle</span>
+                      <span className="font-bold">: {selectedTransaction.circle_name.toUpperCase()}</span>
+                      
+                      <span>Date Time</span>
+                      <span className="font-bold">: {formatDate(selectedTransaction.created_at)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
 
-              {/* Amount Details */}
-              <div className="space-y-4">
-                <h3 className="font-semibold text-black pb-2 border-b">
-                  Amount Details
-                </h3>
+              {/* Items Table */}
+              <div className="-mx-4">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="border-y border-black p-2 bg-gray-50 text-[10px] uppercase w-[50px]">S.No</th>
+                      <th className="border border-black p-2 bg-gray-50 text-[10px] uppercase text-left">Description</th>
+                      <th className="border border-black p-2 bg-gray-50 text-[10px] uppercase">Operator Ref</th>
+                      <th className="border-y border-black p-2 bg-gray-50 text-[10px] uppercase w-[120px] text-right">Amount (Rs.)</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ height: '70px' }}>
+                      <td className="border-r border-black p-3 text-center align-top">1</td>
+                      <td className="border-r border-black p-3 align-top">
+                        Prepaid Recharge SUCCESS.<br/>
+                        ID: {selectedTransaction.mobile_recharge_transaction_id}
+                      </td>
+                      <td className="border-r border-black p-3 text-center align-top">
+                        {selectedTransaction.partner_request_id || '-'}
+                      </td>
+                      <td className="p-3 text-right align-top font-bold">
+                        {formatAmount(selectedTransaction.amount)}
+                      </td>
+                    </tr>
+                    <tr className="border-t border-black font-bold">
+                      <td colSpan={3} className="border-r border-black p-2 text-right">GRAND TOTAL</td>
+                      <td className="p-2 text-right">₹ {formatAmount(selectedTransaction.amount)}</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
 
-                <div className="space-y-3">
-                  <div className="flex justify-between items-center py-2 border-b">
-                    <span className="text-black font-medium">
-                      Recharge Amount
-                    </span>
-                    <span className="font-bold text-2xl text-black">
-                      ₹{formatAmount(selectedTransaction.amount)}
-                    </span>
-                  </div>
-                </div>
+              {/* Amount in Words */}
+              <div className="text-right text-lg font-bold py-2">
+                {numberToWords(typeof selectedTransaction.amount === "string" ? parseFloat(selectedTransaction.amount) : selectedTransaction.amount)}
               </div>
 
               {/* Footer */}
-              <div className="border-t pt-6 text-center space-y-2">
-                <p className="text-xs text-gray-500">
-                  This is a computer-generated receipt and does not require a
-                  signature.
-                </p>
-                <p className="text-xs text-gray-500">
-                  For any technical queries, contact{" "}
-                  <a
-                    href="https://www.gvinfotech.org"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    www.gvinfotech.org
-                  </a>{" "}
-                  or{" "}
-                  <a
-                    href="https://www.paybazaar.in"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 underline hover:text-blue-800"
-                  >
-                    www.paybazaar.in
-                  </a>
-                </p>
+              <div className="flex justify-between items-end border-t border-black pt-4">
+                <div className="text-xs space-y-1">
+                  <p>Thank you!</p>
+                  <p className="font-bold">Customer Services:</p>
+                </div>
+                <div className="text-right">
+                  <p className="text-[10px] text-gray-500 uppercase font-semibold">Platform By</p>
+                  <p className="font-bold text-lg text-black">Paybazaar Technologies</p>
+                  <p className="text-[10px] text-gray-600">www.paybazaar.in</p>
+                </div>
               </div>
             </div>
           )}
