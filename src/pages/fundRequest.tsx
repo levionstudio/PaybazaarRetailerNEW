@@ -28,10 +28,9 @@ import { Header } from "@/components/layout/Header";
 /* -------------------- INTERFACES -------------------- */
 
 interface DecodedToken {
-  admin_id: string;
+  admin_id?: string;
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }
@@ -145,28 +144,6 @@ const RequestFunds = () => {
         }
 
         // Check if user role is retailer
-        if (decoded.user_role !== "retailer") {
-          localStorage.removeItem("authToken");
-          toast({
-            title: "Access Denied",
-            description: "You don't have permission to access this page.",
-            variant: "destructive",
-          });
-          navigate("/login");
-          return;
-        }
-
-        // Verify admin_id exists
-        if (!decoded.admin_id) {
-          toast({
-            title: "Configuration Error",
-            description: "Admin ID not found in token. Please contact support.",
-            variant: "destructive",
-          });
-          navigate("/login");
-          return;
-        }
-
         setTokenData(decoded);
       } catch (err) {
         console.error("Token decode error:", err);

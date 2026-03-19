@@ -37,10 +37,9 @@ interface Bank {
 }
 
 interface DecodedToken {
-  admin_id: string;
+  admin_id?: string;
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }

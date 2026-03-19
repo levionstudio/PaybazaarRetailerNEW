@@ -39,10 +39,8 @@ import * as XLSX from "xlsx";
 /* -------------------- INTERFACES -------------------- */
 
 interface DecodedToken {
-  admin_id: string;
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }
@@ -159,17 +157,6 @@ const GetFundRequests = () => {
         }
 
         // Check if user role is retailer
-        if (decoded.user_role !== "retailer") {
-          localStorage.removeItem("authToken");
-          toast({
-            title: "Access Denied",
-            description: "You don't have permission to access this page.",
-            variant: "destructive",
-          });
-          navigate("/login");
-          return;
-        }
-
         setUserId(decoded.user_id);
       } catch (err) {
         console.error("Token decode error:", err);

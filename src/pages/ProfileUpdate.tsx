@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Badge } from "@/components/ui/badge";
 import {
   Select,
   SelectContent,
@@ -16,29 +15,17 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import {
   ArrowLeft,
-  Camera,
   Save,
-  Upload,
   User,
   Mail,
   Phone,
   MapPin,
-  CreditCard,
   Building2,
-  CheckCircle,
   Lock,
-  AlertCircle,
-  Clock,
-  Unlock,
+  Eye,
+  EyeOff,
+  KeyRound,
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useToast } from "@/hooks/use-toast";
@@ -46,515 +33,274 @@ import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import { motion } from "framer-motion";
 
-
 interface DecodedToken {
   user_id: string;
-  user_role: string;
   exp: number;
 }
 
-type SectionType = "personal" | "contact" | "address" | "kyc";
-
-interface SectionPermission {
-  section: SectionType;
-  status: "none" | "pending" | "approved" | "rejected";
-  requestDate?: string;
-}
+const CLOUDFRONT_BASE = "https://d1wq5jtrql22ms.cloudfront.net/";
+const toCdnUrl = (key: string | null | undefined): string =>
+  key ? `${CLOUDFRONT_BASE}${key}` : "";
 
 export default function ProfileUpdate() {
   const navigate = useNavigate();
   const { toast } = useToast();
 
+  // ─── Profile form data (matches PUT /retailer/update/{id} payload) ───
   const [formData, setFormData] = useState({
-    user_name: "",
-    user_email: "",
-    user_phone: "",
-    user_aadhar_number: "",
-    user_pan_number: "",
-    user_city: "",
-    user_state: "",
-    user_address: "",
-    user_pincode: "",
-    user_date_of_birth: "",
-    user_gender: "",
+    retailer_name: "",
+    retailer_phone: "",
+    retailer_email: "",
+    retailer_city: "",
+    retailer_state: "",
+    retailer_address: "",
+    retailer_pincode: "",
+    retailer_business_name: "",
+    retailer_business_type: "",
+    retailer_gst_number: "",
   });
+
+  // ─── Password form ───
+  const [passwordData, setPasswordData] = useState({
+    retailer_password: "",
+    confirm_password: "",
+  });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [loadingPassword, setLoadingPassword] = useState(false);
+
+  // ─── MPIN form ───
+  const [mpinData, setMpinData] = useState({ retailer_mpin: "" });
+  const [loadingMpin, setLoadingMpin] = useState(false);
 
   const [userId, setUserId] = useState<string>("");
   const [loading, setLoading] = useState(false);
   const [fetchingProfile, setFetchingProfile] = useState(true);
-  const [profileImage, setProfileImage] = useState(
-    "/lovable-uploads/c0876286-fbc5-4e25-b7e8-cb81e868b3fe.png"
-  );
-  const [isUploading, setIsUploading] = useState(false);
+  const [profileImage, setProfileImage] = useState<string>("");
 
-  // Section-based permission states
-  const [sectionPermissions, setSectionPermissions] = useState<SectionPermission[]>([
-    { section: "personal", status: "none" },
-    { section: "contact", status: "none" },
-    { section: "address", status: "none" },
-    { section: "kyc", status: "none" },
-  ]);
-
-  const [showPermissionDialog, setShowPermissionDialog] = useState(false);
-  const [selectedSection, setSelectedSection] = useState<SectionType | "">("");
-  const [permissionReason, setPermissionReason] = useState("");
-  const [requestingPermission, setRequestingPermission] = useState(false);
-
-  const sectionOptions = [
-    {
-      value: "personal",
-      label: "Personal Details",
-      description: "Name, Gender, Date of Birth",
-      icon: User,
-      defaultReason: "I need to update my personal details like name, gender, or date of birth due to incorrect information.",
-    },
-    {
-      value: "contact",
-      label: "Contact Information",
-      description: "Email, Phone Number",
-      icon: Phone,
-      defaultReason: "I need to update my contact information like phone number or email address because my details have changed.",
-    },
-    {
-      value: "address",
-      label: "Address Details",
-      description: "Address, City, State, Pincode",
-      icon: MapPin,
-      defaultReason: "I need to update my address details because I have relocated to a new location or the address is incorrect.",
-    },
-    {
-      value: "kyc",
-      label: "KYC Details",
-      description: "Aadhaar Number, PAN Number",
-      icon: CreditCard,
-      defaultReason: "I need to update my KYC documents like Aadhaar or PAN number due to incorrect or outdated information.",
-    },
-  ];
-
-  // Get user_id from token and fetch profile
+  // ─── Fetch profile on mount ───
   useEffect(() => {
-    const checkPermissionAndFetchProfile = async (userId: string) => {
-      const token = localStorage.getItem("authToken");
-      if (!token) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to view your profile.",
-          variant: "destructive",
-        });
-        navigate("/login");
-        return;
-      }
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      toast({ title: "Authentication Required", description: "Please log in.", variant: "destructive" });
+      navigate("/login");
+      return;
+    }
 
+    let decoded: DecodedToken;
+    try {
+      decoded = jwtDecode<DecodedToken>(token);
+    } catch {
+      toast({ title: "Error", description: "Invalid session. Please log in again.", variant: "destructive" });
+      navigate("/login");
+      return;
+    }
+
+    if (!decoded.user_id || decoded.exp * 1000 < Date.now()) {
+      localStorage.removeItem("authToken");
+      toast({ title: "Session Expired", description: "Please log in again.", variant: "destructive" });
+      navigate("/login");
+      return;
+    }
+
+    setUserId(decoded.user_id);
+
+    const fetchProfile = async () => {
       try {
         setFetchingProfile(true);
-
-        // TODO: Replace with actual API call to check section permissions
-        // const permissionResponse = await axios.get(
-        //   `${import.meta.env.VITE_API_BASE_URL}/user/profile-section-permissions/${userId}`,
-        //   {
-        //     headers: {
-        //       Authorization: `Bearer ${token}`,
-        //       "Content-Type": "application/json",
-        //     },
-        //   }
-        // );
-
-        // For testing: Simulate section permissions
-        // Change status to "approved" to unlock that section
-        const mockPermissions: SectionPermission[] = [
-          { section: "personal", status: "none" },
-          { section: "contact", status: "none" },
-          { section: "address", status: "none" },
-          { section: "kyc", status: "none" },
-        ];
-        setSectionPermissions(mockPermissions);
-
-        // Fetch profile data
+        // GET /retailer/get/{retailer_id}
         const response = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}retailer/get/retailer/${userId}`,
-          {
-            headers: {
-              Authorization: `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          }
+          `${import.meta.env.VITE_API_BASE_URL}/retailer/get/${decoded.user_id}`,
+          { headers: { Authorization: `Bearer ${token}` } }
         );
 
-        if (response.data.status === "success" && response.data.data?.user) {
-          const userData = response.data.data.user;
-
+        const retailer = response.data?.retailer;
+        if (retailer) {
           setFormData({
-            user_name: userData.user_name || "",
-            user_email: userData.user_email || "",
-            user_phone: userData.user_phone || "",
-            user_aadhar_number: userData.user_aadhar_number || "",
-            user_pan_number: userData.user_pan_number || "",
-            user_city: userData.user_city || "",
-            user_state: userData.user_state || "",
-            user_address: userData.user_address || "",
-            user_pincode: userData.user_pincode || "",
-            user_date_of_birth: userData.user_date_of_birth || "",
-            user_gender: userData.user_gender || "",
+            retailer_name: retailer.retailer_name || "",
+            retailer_phone: retailer.retailer_phone || "",
+            retailer_email: retailer.retailer_email || "",
+            retailer_city: retailer.retailer_city || "",
+            retailer_state: retailer.retailer_state || "",
+            retailer_address: retailer.retailer_address || "",
+            retailer_pincode: retailer.retailer_pincode || "",
+            retailer_business_name: retailer.retailer_business_name || "",
+            retailer_business_type: retailer.retailer_business_type || "",
+            retailer_gst_number: retailer.retailer_gst_number || "",
           });
-
-          toast({
-            title: "Profile Loaded",
-            description: "Your profile information has been loaded successfully.",
-          });
+          // Set profile image from CloudFront
+          if (retailer.retailer_image) {
+            setProfileImage(toCdnUrl(retailer.retailer_image));
+          }
         }
       } catch (error: any) {
-        console.error("Error fetching profile:", error);
-
-        let errorMessage = "Failed to load profile data.";
-
+        let msg = "Failed to load profile data.";
         if (error.response?.status === 401) {
-          errorMessage = "Session expired. Please log in again.";
+          msg = "Session expired. Please log in again.";
           setTimeout(() => navigate("/login"), 2000);
-        } else if (error.response?.status === 404) {
-          errorMessage = "Profile not found.";
         } else if (error.response?.data?.message) {
-          errorMessage = error.response.data.message;
+          msg = error.response.data.message;
         }
-
-        toast({
-          title: "Warning",
-          description: errorMessage,
-          variant: "destructive",
-        });
+        toast({ title: "Warning", description: msg, variant: "destructive" });
       } finally {
         setFetchingProfile(false);
       }
     };
 
-    const token = localStorage.getItem("authToken");
-    if (token) {
-      try {
-        const decoded: DecodedToken = jwtDecode(token);
-        if (decoded.user_id) {
-          const userIdFromToken = decoded.user_id;
-          setUserId(userIdFromToken);
-          checkPermissionAndFetchProfile(userIdFromToken);
-        } else {
-          toast({
-            title: "Error",
-            description: "User ID not found in token. Please log in again.",
-            variant: "destructive",
-          });
-          navigate("/login");
-        }
-      } catch (error) {
-        console.error("Error decoding token:", error);
-        toast({
-          title: "Error",
-          description: "Failed to load user information. Please log in again.",
-          variant: "destructive",
-        });
-        navigate("/login");
-      }
-    } else {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to update your profile.",
-        variant: "destructive",
-      });
-      navigate("/login");
-    }
+    fetchProfile();
   }, [navigate, toast]);
-
-  const getSectionStatus = (section: SectionType) => {
-    return sectionPermissions.find((p) => p.section === section)?.status || "none";
-  };
-
-  const isSectionEditable = (section: SectionType) => {
-    return getSectionStatus(section) === "approved";
-  };
-
-  const handleRequestPermission = async () => {
-    if (!selectedSection) {
-      toast({
-        title: "Section Required",
-        description: "Please select which section you want to edit.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (!permissionReason.trim()) {
-      toast({
-        title: "Reason Required",
-        description: "Please provide a reason for update request.",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    const token = localStorage.getItem("authToken");
-    if (!token) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to request permission.",
-        variant: "destructive",
-      });
-      navigate("/login");
-      return;
-    }
-
-    try {
-      setRequestingPermission(true);
-
-      // TODO: Replace with actual API call
-      // const response = await axios.post(
-      //   `${import.meta.env.VITE_API_BASE_URL}/user/request-section-update`,
-      //   {
-      //     user_id: userId,
-      //     section: selectedSection,
-      //     reason: permissionReason,
-      //   },
-      //   {
-      //     headers: {
-      //       Authorization: `Bearer ${token}`,
-      //       "Content-Type": "application/json",
-      //     },
-      //   }
-      // );
-
-      // For testing: Simulate successful request
-      await new Promise((resolve) => setTimeout(resolve, 1000));
-
-      // Update section permission status
-      setSectionPermissions((prev) =>
-        prev.map((p) =>
-          p.section === selectedSection
-            ? { ...p, status: "pending", requestDate: new Date().toISOString() }
-            : p
-        )
-      );
-
-      setShowPermissionDialog(false);
-      setSelectedSection("");
-      setPermissionReason("");
-
-      const sectionName = sectionOptions.find((s) => s.value === selectedSection)?.label;
-
-      toast({
-        title: "Request Submitted",
-        description: `Your request to edit ${sectionName} has been sent to admin for approval.`,
-      });
-    } catch (error: any) {
-      console.error("Permission request error:", error);
-
-      let errorMessage = "Failed to submit permission request. Please try again.";
-
-      if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-
-      toast({
-        title: "Request Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
-    } finally {
-      setRequestingPermission(false);
-    }
-  };
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
   };
 
-  const handleImageUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    if (file) {
-      setIsUploading(true);
-      setTimeout(() => {
-        const imageUrl = URL.createObjectURL(file);
-        setProfileImage(imageUrl);
-        setIsUploading(false);
-        toast({
-          title: "Profile photo updated",
-          description: "Your profile photo has been successfully updated.",
-        });
-      }, 1500);
-    }
-  };
-
-  const formatDateForAPI = (dateString: string): string => {
-    if (!dateString) return "";
-    if (dateString.includes("-") && dateString.split("-")[0].length === 2) {
-      return dateString;
-    }
-    const [year, month, day] = dateString.split("-");
-    return `${day}-${month}-${year}`;
-  };
-
-  const formatDateForInput = (dateString: string): string => {
-    if (!dateString) return "";
-    if (dateString.includes("-") && dateString.split("-")[0].length === 4) {
-      return dateString;
-    }
-    const [day, month, year] = dateString.split("-");
-    return `${year}-${month}-${day}`;
-  };
-
+  // ─── Submit profile update: PUT /retailer/update/{retailer_id} ───
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-
     if (!userId) {
-      toast({
-        title: "Error",
-        description: "User ID not found. Please log in again.",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "User ID not found. Please log in again.", variant: "destructive" });
       navigate("/login");
-      return;
-    }
-
-    // Check if at least one section is editable
-    const hasEditableSection = sectionPermissions.some((p) => p.status === "approved");
-    if (!hasEditableSection) {
-      toast({
-        title: "Permission Required",
-        description: "You need admin approval to update your profile.",
-        variant: "destructive",
-      });
       return;
     }
 
     const token = localStorage.getItem("authToken");
     if (!token) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to update your profile.",
-        variant: "destructive",
-      });
+      toast({ title: "Authentication Required", description: "Please log in.", variant: "destructive" });
       navigate("/login");
       return;
     }
 
-    const payload = {
-      user_id: userId,
-      user_name: formData.user_name,
-      user_email: formData.user_email,
-      user_phone: formData.user_phone,
-      user_aadhar_number: formData.user_aadhar_number,
-      user_pan_number: formData.user_pan_number,
-      user_city: formData.user_city,
-      user_state: formData.user_state,
-      user_address: formData.user_address,
-      user_pincode: formData.user_pincode,
-      user_date_of_birth: formatDateForAPI(formData.user_date_of_birth),
-      user_gender: formData.user_gender,
-    };
-
     try {
       setLoading(true);
-
-      toast({
-        title: "Updating Profile",
-        description: "Please wait while we update your profile...",
-      });
-
-      const response = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/user/update/profile`,
-        payload,
+      // PUT /retailer/update/{retailer_id}
+      const response = await axios.put(
+        `${import.meta.env.VITE_API_BASE_URL}/retailer/update/${userId}`,
         {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
+          retailer_name: formData.retailer_name,
+          retailer_phone: formData.retailer_phone,
+          retailer_email: formData.retailer_email,
+          retailer_city: formData.retailer_city,
+          retailer_state: formData.retailer_state,
+          retailer_address: formData.retailer_address,
+          retailer_pincode: formData.retailer_pincode,
+          retailer_business_name: formData.retailer_business_name,
+          retailer_business_type: formData.retailer_business_type,
+          retailer_gst_number: formData.retailer_gst_number,
+        },
+        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
       );
 
-      if (response.data.status === "success") {
-        toast({
-          title: "Success",
-          description: response.data.message || "Profile updated successfully!",
-        });
-
-        // Reset permissions for updated sections
-        setSectionPermissions((prev) =>
-          prev.map((p) => (p.status === "approved" ? { ...p, status: "none" } : p))
-        );
-
-        setTimeout(() => {
-          navigate("/profile");
-        }, 1500);
+      if (response.data.status === "success" || response.status === 200) {
+        toast({ title: "Success", description: response.data.message || "Profile updated successfully!" });
+        setTimeout(() => navigate("/profile"), 1500);
       } else {
-        toast({
-          title: "Update Failed",
-          description:
-            response.data.message || "Failed to update profile. Please try again.",
-          variant: "destructive",
-        });
+        toast({ title: "Update Failed", description: response.data.message || "Failed to update profile.", variant: "destructive" });
       }
     } catch (error: any) {
-      console.error("Profile update error:", error);
-
-      let errorMessage = "Failed to update profile. Please try again.";
-
-      if (error.response) {
-        if (error.response.status === 400) {
-          errorMessage =
-            error.response.data?.message || "Invalid data. Please check all fields.";
-        } else if (error.response.status === 401) {
-          errorMessage = "Session expired. Please log in again.";
-          setTimeout(() => navigate("/login"), 2000);
-        } else if (error.response.status === 403) {
-          errorMessage = "You don't have permission to perform this action.";
-        } else if (error.response.status === 500) {
-          errorMessage = "Server error. Please try again later.";
-        } else {
-          errorMessage = error.response.data?.message || errorMessage;
-        }
-      } else if (error.request) {
-        errorMessage = "Network error. Please check your internet connection.";
-      }
-
-      toast({
-        title: "Update Failed",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      let msg = "Failed to update profile. Please try again.";
+      if (error.response?.status === 400) msg = error.response.data?.message || "Invalid data.";
+      else if (error.response?.status === 401) { msg = "Session expired."; setTimeout(() => navigate("/login"), 2000); }
+      else if (error.response?.data?.message) msg = error.response.data.message;
+      toast({ title: "Update Failed", description: msg, variant: "destructive" });
     } finally {
       setLoading(false);
     }
   };
 
-  const renderSectionBadge = (section: SectionType) => {
-    const status = getSectionStatus(section);
+  // ─── Change password: PATCH /retailer/update/{retailer_id}/password ───
+  const handlePasswordUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!passwordData.retailer_password) {
+      toast({ title: "Required", description: "Please enter a new password.", variant: "destructive" });
+      return;
+    }
+    if (passwordData.retailer_password !== passwordData.confirm_password) {
+      toast({ title: "Mismatch", description: "Passwords do not match.", variant: "destructive" });
+      return;
+    }
+    if (passwordData.retailer_password.length < 8) {
+      toast({ title: "Too Short", description: "Password must be at least 8 characters.", variant: "destructive" });
+      return;
+    }
 
-    switch (status) {
-      case "approved":
-        return (
-          <Badge className="bg-green-50 text-green-700 border-green-200 ml-2">
-            <Unlock className="h-3 w-3 mr-1" />
-            Unlocked
-          </Badge>
-        );
-      case "pending":
-        return (
-          <Badge className="bg-yellow-50 text-yellow-700 border-yellow-200 ml-2">
-            <Clock className="h-3 w-3 mr-1" />
-            Pending
-          </Badge>
-        );
-      case "rejected":
-        return (
-          <Badge className="bg-red-50 text-red-700 border-red-200 ml-2">
-            <AlertCircle className="h-3 w-3 mr-1" />
-            Rejected
-          </Badge>
-        );
-      default:
-        return (
-          <Badge className="bg-slate-50 text-slate-700 border-slate-200 ml-2">
-            <Lock className="h-3 w-3 mr-1" />
-            Locked
-          </Badge>
-        );
+    const token = localStorage.getItem("authToken");
+    try {
+      setLoadingPassword(true);
+      // PATCH /retailer/update/{retailer_id}/password
+      const response = await axios.patch(
+        `${import.meta.env.VITE_API_BASE_URL}/retailer/update/${userId}/password`,
+        { retailer_password: passwordData.retailer_password },
+        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+      );
+
+      if (response.data.status === "success" || response.status === 200) {
+        toast({ title: "Password Updated", description: "Your password has been changed successfully." });
+        setPasswordData({ retailer_password: "", confirm_password: "" });
+      } else {
+        toast({ title: "Failed", description: response.data.message || "Failed to update password.", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed",
+        description: error.response?.data?.message || "Failed to update password.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingPassword(false);
     }
   };
+
+  // ─── Change MPIN: PATCH /retailer/update/{retailer_id}/mpin ───
+  const handleMpinUpdate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!mpinData.retailer_mpin || mpinData.retailer_mpin.length !== 4) {
+      toast({ title: "Invalid MPIN", description: "MPIN must be exactly 4 digits.", variant: "destructive" });
+      return;
+    }
+
+    const token = localStorage.getItem("authToken");
+    try {
+      setLoadingMpin(true);
+      // PATCH /retailer/update/{retailer_id}/mpin
+      const response = await axios.patch(
+        `${import.meta.env.VITE_API_BASE_URL}/retailer/update/${userId}/mpin`,
+        { retailer_mpin: parseInt(mpinData.retailer_mpin) },
+        { headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } }
+      );
+
+      if (response.data.status === "success" || response.status === 200) {
+        toast({ title: "MPIN Updated", description: "Your MPIN has been changed successfully." });
+        setMpinData({ retailer_mpin: "" });
+      } else {
+        toast({ title: "Failed", description: response.data.message || "Failed to update MPIN.", variant: "destructive" });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed",
+        description: error.response?.data?.message || "Failed to update MPIN.",
+        variant: "destructive",
+      });
+    } finally {
+      setLoadingMpin(false);
+    }
+  };
+
+  if (fetchingProfile) {
+    return (
+      <div className="min-h-screen bg-background flex w-full">
+        <AppSidebar />
+        <div className="flex-1 flex flex-col min-w-0">
+          <Header />
+          <div className="flex items-center justify-center py-20">
+            <div className="flex flex-col items-center gap-4">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+              <p className="text-muted-foreground">Loading profile data...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex w-full">
@@ -564,488 +310,309 @@ export default function ProfileUpdate() {
         <Header />
 
         <main className="flex-1 p-6 space-y-6 overflow-auto">
-          {/* Header Section */}
+          {/* Page Header */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="flex items-center justify-between mb-6"
+            transition={{ duration: 0.4 }}
+            className="flex items-center gap-4 mb-2"
           >
-            <div className="flex items-center gap-4">
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => navigate("/profile")}
-                className="hover:bg-accent"
-              >
-                <ArrowLeft className="h-5 w-5" />
-              </Button>
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Update Profile</h1>
-                <p className="text-sm text-muted-foreground mt-1">
-                  Request permission to edit specific sections
-                </p>
-              </div>
-            </div>
-
-            <Button
-              onClick={() => setShowPermissionDialog(true)}
-              className="paybazaar-gradient text-white"
-            >
-              <Lock className="h-4 w-4 mr-2" />
-              Request Edit Permission
+            <Button variant="ghost" size="icon" onClick={() => navigate("/profile")} className="hover:bg-accent">
+              <ArrowLeft className="h-5 w-5" />
             </Button>
+            <div>
+              <h1 className="text-2xl font-bold text-foreground">Update Profile</h1>
+              <p className="text-sm text-muted-foreground mt-1">Manage your account details, password and MPIN</p>
+            </div>
           </motion.div>
 
-          {fetchingProfile ? (
-            <div className="flex items-center justify-center py-20">
-              <div className="flex flex-col items-center gap-4">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
-                <p className="text-muted-foreground">Loading profile data...</p>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={handleSubmit} className="space-y-6">
-              {/* Profile Photo Section */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.1 }}
-              >
-                <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl">
-                  <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <Camera className="h-5 w-5" />
-                      Profile Photo
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6">
-                    <div className="flex flex-col md:flex-row items-center gap-6">
-                      <div className="relative">
-                        <Avatar className="h-32 w-32 ring-4 ring-primary/20">
-                          <AvatarImage src={profileImage} alt="Profile" />
-                          <AvatarFallback className="text-2xl bg-primary/10 text-primary">
-                            {formData.user_name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .toUpperCase() || "U"}
-                          </AvatarFallback>
-                        </Avatar>
+          {/* ── Profile Details Form ── */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.05 }}>
+            <form onSubmit={handleSubmit}>
+              <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl mb-6">
+                <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <User className="h-5 w-5" />
+                    Profile Details
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6 space-y-6">
+                  {/* Avatar row */}
+                  <div className="flex items-center gap-6">
+                    <Avatar className="h-20 w-20 ring-4 ring-primary/20">
+                      <AvatarImage src={profileImage} alt="Profile" />
+                      <AvatarFallback className="text-xl bg-primary/10 text-primary">
+                        {formData.retailer_name.split(" ").map((n) => n[0]).join("").toUpperCase() || "R"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold text-lg">{formData.retailer_name || "Retailer"}</p>
+                      <p className="text-sm text-muted-foreground">{userId}</p>
+                    </div>
+                  </div>
 
-                        {isUploading && (
-                          <div className="absolute inset-0 bg-black/50 rounded-full flex items-center justify-center">
-                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-white"></div>
-                          </div>
-                        )}
+                  {/* Personal */}
+                  <div>
+                    <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                      <User className="h-4 w-4 text-primary" /> Personal Info
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="retailer_name">Full Name *</Label>
+                        <Input
+                          id="retailer_name"
+                          value={formData.retailer_name}
+                          onChange={(e) => handleInputChange("retailer_name", e.target.value)}
+                          className="mt-1"
+                          required
+                          placeholder="Enter your full name"
+                        />
                       </div>
+                      <div>
+                        <Label htmlFor="retailer_email">Email Address *</Label>
+                        <Input
+                          id="retailer_email"
+                          type="email"
+                          value={formData.retailer_email}
+                          onChange={(e) => handleInputChange("retailer_email", e.target.value)}
+                          className="mt-1"
+                          required
+                          placeholder="Enter your email"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="retailer_phone">Mobile Number *</Label>
+                        <Input
+                          id="retailer_phone"
+                          value={formData.retailer_phone}
+                          onChange={(e) => handleInputChange("retailer_phone", e.target.value.replace(/\D/g, "").slice(0, 10))}
+                          className="mt-1"
+                          required
+                          maxLength={10}
+                          placeholder="10-digit mobile number"
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                      <div className="flex-1 text-center md:text-left">
-                        <h3 className="text-lg font-semibold mb-2">
-                          Upload Profile Picture
-                        </h3>
-                        <p className="text-muted-foreground mb-4">
-                          Choose a photo that represents you well. JPG, PNG files up to 5MB.
-                        </p>
+                  {/* Business */}
+                  <div>
+                    <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                      <Building2 className="h-4 w-4 text-primary" /> Business Info
+                    </h3>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <Label htmlFor="retailer_business_name">Business Name</Label>
+                        <Input
+                          id="retailer_business_name"
+                          value={formData.retailer_business_name}
+                          onChange={(e) => handleInputChange("retailer_business_name", e.target.value)}
+                          className="mt-1"
+                          placeholder="Business name"
+                        />
+                      </div>
+                      <div>
+                        <Label htmlFor="retailer_business_type">Business Type</Label>
+                        <Select
+                          value={formData.retailer_business_type}
+                          onValueChange={(v) => handleInputChange("retailer_business_type", v)}
+                        >
+                          <SelectTrigger className="mt-1">
+                            <SelectValue placeholder="Select type" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="Proprietorship">Proprietorship</SelectItem>
+                            <SelectItem value="Partnership">Partnership</SelectItem>
+                            <SelectItem value="Private Limited">Private Limited</SelectItem>
+                            <SelectItem value="Public Limited">Public Limited</SelectItem>
+                            <SelectItem value="LLP">LLP</SelectItem>
+                            <SelectItem value="Other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div>
+                        <Label htmlFor="retailer_gst_number">GST Number</Label>
+                        <Input
+                          id="retailer_gst_number"
+                          value={formData.retailer_gst_number}
+                          onChange={(e) => handleInputChange("retailer_gst_number", e.target.value.toUpperCase())}
+                          className="mt-1"
+                          placeholder="GST number"
+                          maxLength={15}
+                        />
+                      </div>
+                    </div>
+                  </div>
 
-                        <div className="flex gap-3 flex-wrap justify-center md:justify-start">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            className="relative overflow-hidden"
-                            disabled={isUploading}
-                          >
-                            <Upload className="h-4 w-4 mr-2" />
-                            {isUploading ? "Uploading..." : "Choose Photo"}
-                            <input
-                              type="file"
-                              accept="image/*"
-                              onChange={handleImageUpload}
-                              className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                              disabled={isUploading}
-                            />
-                          </Button>
-
-                          <Button
-                            type="button"
-                            variant="ghost"
-                            onClick={() => setProfileImage("")}
-                            disabled={isUploading}
-                          >
-                            Remove Photo
-                          </Button>
+                  {/* Address */}
+                  <div>
+                    <h3 className="text-base font-semibold mb-3 flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-primary" /> Address
+                    </h3>
+                    <div className="space-y-4">
+                      <div>
+                        <Label htmlFor="retailer_address">Complete Address</Label>
+                        <Textarea
+                          id="retailer_address"
+                          value={formData.retailer_address}
+                          onChange={(e) => handleInputChange("retailer_address", e.target.value)}
+                          className="mt-1"
+                          rows={3}
+                          placeholder="Enter your complete address"
+                        />
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                          <Label htmlFor="retailer_city">City</Label>
+                          <Input
+                            id="retailer_city"
+                            value={formData.retailer_city}
+                            onChange={(e) => handleInputChange("retailer_city", e.target.value)}
+                            className="mt-1"
+                            placeholder="City"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="retailer_state">State</Label>
+                          <Input
+                            id="retailer_state"
+                            value={formData.retailer_state}
+                            onChange={(e) => handleInputChange("retailer_state", e.target.value)}
+                            className="mt-1"
+                            placeholder="State"
+                          />
+                        </div>
+                        <div>
+                          <Label htmlFor="retailer_pincode">Pincode</Label>
+                          <Input
+                            id="retailer_pincode"
+                            value={formData.retailer_pincode}
+                            onChange={(e) => handleInputChange("retailer_pincode", e.target.value.replace(/\D/g, "").slice(0, 6))}
+                            className="mt-1"
+                            placeholder="Pincode"
+                            maxLength={6}
+                          />
                         </div>
                       </div>
                     </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
+                  </div>
 
-              {/* Personal Information */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.2 }}
-              >
-                <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl">
-                  <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <User className="h-5 w-5" />
-                      Personal Information
-                      {renderSectionBadge("personal")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="user_name">Full Name *</Label>
-                      <Input
-                        id="user_name"
-                        value={formData.user_name}
-                        onChange={(e) => handleInputChange("user_name", e.target.value)}
-                        className="mt-1"
-                        required
-                        placeholder="Enter your full name"
-                        disabled={!isSectionEditable("personal")}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="user_gender">Gender</Label>
-                      <Input
-                        id="user_gender"
-                        value={formData.user_gender}
-                        onChange={(e) => handleInputChange("user_gender", e.target.value)}
-                        className="mt-1"
-                        placeholder="Male, Female, Other"
-                        disabled={!isSectionEditable("personal")}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="user_date_of_birth">Date of Birth</Label>
-                      <Input
-                        id="user_date_of_birth"
-                        type="date"
-                        value={formatDateForInput(formData.user_date_of_birth)}
-                        onChange={(e) => {
-                          const formatted = formatDateForAPI(e.target.value);
-                          handleInputChange("user_date_of_birth", formatted);
-                        }}
-                        className="mt-1"
-                        disabled={!isSectionEditable("personal")}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              {/* Contact Information */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.3 }}
-              >
-                <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl">
-                  <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <Phone className="h-5 w-5" />
-                      Contact Information
-                      {renderSectionBadge("contact")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="user_email">Email Address *</Label>
-                      <Input
-                        id="user_email"
-                        type="email"
-                        value={formData.user_email}
-                        onChange={(e) => handleInputChange("user_email", e.target.value)}
-                        className="mt-1"
-                        required
-                        placeholder="Enter your email"
-                        disabled={!isSectionEditable("contact")}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="user_phone">Mobile Number *</Label>
-                      <Input
-                        id="user_phone"
-                        value={formData.user_phone}
-                        onChange={(e) =>
-                          handleInputChange(
-                            "user_phone",
-                            e.target.value.replace(/\D/g, "").slice(0, 10)
-                          )
-                        }
-                        className="mt-1"
-                        required
-                        placeholder="Enter 10-digit mobile number"
-                        maxLength={10}
-                        disabled={!isSectionEditable("contact")}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              {/* Address Information */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.4 }}
-              >
-                <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl">
-                  <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <MapPin className="h-5 w-5" />
-                      Address Information
-                      {renderSectionBadge("address")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6 space-y-4">
-                    <div>
-                      <Label htmlFor="user_address">Complete Address *</Label>
-                      <Textarea
-                        id="user_address"
-                        value={formData.user_address}
-                        onChange={(e) => handleInputChange("user_address", e.target.value)}
-                        className="mt-1"
-                        rows={3}
-                        required
-                        placeholder="Enter your complete address"
-                        disabled={!isSectionEditable("address")}
-                      />
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <Label htmlFor="user_city">City *</Label>
-                        <Input
-                          id="user_city"
-                          value={formData.user_city}
-                          onChange={(e) => handleInputChange("user_city", e.target.value)}
-                          className="mt-1"
-                          required
-                          placeholder="Enter city"
-                          disabled={!isSectionEditable("address")}
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="user_state">State *</Label>
-                        <Input
-                          id="user_state"
-                          value={formData.user_state}
-                          onChange={(e) => handleInputChange("user_state", e.target.value)}
-                          className="mt-1"
-                          required
-                          placeholder="Enter state"
-                          disabled={!isSectionEditable("address")}
-                        />
-                      </div>
-
-                      <div>
-                        <Label htmlFor="user_pincode">Pin Code *</Label>
-                        <Input
-                          id="user_pincode"
-                          value={formData.user_pincode}
-                          onChange={(e) =>
-                            handleInputChange(
-                              "user_pincode",
-                              e.target.value.replace(/\D/g, "").slice(0, 6)
-                            )
-                          }
-                          className="mt-1"
-                          required
-                          placeholder="Enter pincode"
-                          maxLength={6}
-                          disabled={!isSectionEditable("address")}
-                        />
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              {/* Verification Documents */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.5 }}
-              >
-                <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl">
-                  <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
-                    <CardTitle className="flex items-center gap-2 text-xl">
-                      <CreditCard className="h-5 w-5" />
-                      KYC Documents
-                      {renderSectionBadge("kyc")}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="user_pan_number">PAN Number</Label>
-                      <Input
-                        id="user_pan_number"
-                        value={formData.user_pan_number}
-                        onChange={(e) =>
-                          handleInputChange("user_pan_number", e.target.value.toUpperCase())
-                        }
-                        className="mt-1"
-                        placeholder="Enter PAN number"
-                        maxLength={10}
-                        disabled={!isSectionEditable("kyc")}
-                      />
-                    </div>
-
-                    <div>
-                      <Label htmlFor="user_aadhar_number">Aadhaar Number</Label>
-                      <Input
-                        id="user_aadhar_number"
-                        value={formData.user_aadhar_number}
-                        onChange={(e) =>
-                          handleInputChange(
-                            "user_aadhar_number",
-                            e.target.value.replace(/\D/g, "").slice(0, 12)
-                          )
-                        }
-                        className="mt-1"
-                        placeholder="Enter Aadhaar number"
-                        maxLength={12}
-                        disabled={!isSectionEditable("kyc")}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
-              </motion.div>
-
-              {/* Action Buttons */}
-              <motion.div
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ duration: 0.5, delay: 0.6 }}
-                className="flex flex-col sm:flex-row gap-4 justify-end"
-              >
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => navigate("/profile")}
-                  className="sm:w-auto"
-                >
-                  Cancel
-                </Button>
-
-                <Button
-                  type="submit"
-                  className="sm:w-auto paybazaar-gradient text-white"
-                  disabled={
-                    isUploading ||
-                    loading ||
-                    !sectionPermissions.some((p) => p.status === "approved")
-                  }
-                >
-                  <Save className="h-4 w-4 mr-2" />
-                  {loading ? "Saving..." : "Save Changes"}
-                </Button>
-              </motion.div>
+                  {/* Submit */}
+                  <div className="flex justify-end gap-3 pt-2">
+                    <Button type="button" variant="outline" onClick={() => navigate("/profile")}>Cancel</Button>
+                    <Button type="submit" className="paybazaar-gradient text-white" disabled={loading}>
+                      <Save className="h-4 w-4 mr-2" />
+                      {loading ? "Saving..." : "Save Changes"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
             </form>
-          )}
+          </motion.div>
+
+          {/* ── Change Password ── */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.1 }}>
+            <form onSubmit={handlePasswordUpdate}>
+              <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl mb-6">
+                <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <Lock className="h-5 w-5" />
+                    Change Password
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                      <Label htmlFor="new_password">New Password *</Label>
+                      <div className="relative mt-1">
+                        <Input
+                          id="new_password"
+                          type={showPassword ? "text" : "password"}
+                          value={passwordData.retailer_password}
+                          onChange={(e) => setPasswordData((p) => ({ ...p, retailer_password: e.target.value }))}
+                          placeholder="Enter new password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowPassword((v) => !v)}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <div>
+                      <Label htmlFor="confirm_password">Confirm Password *</Label>
+                      <div className="relative mt-1">
+                        <Input
+                          id="confirm_password"
+                          type={showConfirm ? "text" : "password"}
+                          value={passwordData.confirm_password}
+                          onChange={(e) => setPasswordData((p) => ({ ...p, confirm_password: e.target.value }))}
+                          placeholder="Confirm new password"
+                          required
+                        />
+                        <button
+                          type="button"
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                          onClick={() => setShowConfirm((v) => !v)}
+                        >
+                          {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2">Minimum 8 characters. Include uppercase, lowercase, numbers and special characters.</p>
+                  <div className="flex justify-end mt-4">
+                    <Button type="submit" className="paybazaar-gradient text-white" disabled={loadingPassword}>
+                      <Lock className="h-4 w-4 mr-2" />
+                      {loadingPassword ? "Updating..." : "Update Password"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </form>
+          </motion.div>
+
+          {/* ── Change MPIN ── */}
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4, delay: 0.15 }}>
+            <form onSubmit={handleMpinUpdate}>
+              <Card className="overflow-hidden rounded-2xl border border-border/60 shadow-xl">
+                <CardHeader className="paybazaar-gradient rounded-none border-b border-white/20 text-white">
+                  <CardTitle className="flex items-center gap-2 text-xl">
+                    <KeyRound className="h-5 w-5" />
+                    Change MPIN
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="p-6">
+                  <div className="max-w-xs">
+                    <Label htmlFor="retailer_mpin">New MPIN (4 digits) *</Label>
+                    <Input
+                      id="retailer_mpin"
+                      type="password"
+                      inputMode="numeric"
+                      value={mpinData.retailer_mpin}
+                      onChange={(e) => setMpinData({ retailer_mpin: e.target.value.replace(/\D/g, "").slice(0, 4) })}
+                      placeholder="Enter 4-digit MPIN"
+                      maxLength={4}
+                      className="mt-1 tracking-widest text-center text-xl"
+                      required
+                    />
+                    <p className="text-xs text-muted-foreground mt-2">Your MPIN is used to authorize payout transactions.</p>
+                  </div>
+                  <div className="flex justify-end mt-4">
+                    <Button type="submit" className="paybazaar-gradient text-white" disabled={loadingMpin || mpinData.retailer_mpin.length !== 4}>
+                      <KeyRound className="h-4 w-4 mr-2" />
+                      {loadingMpin ? "Updating..." : "Update MPIN"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            </form>
+          </motion.div>
         </main>
       </div>
-
-      {/* Permission Request Dialog */}
-      <Dialog open={showPermissionDialog} onOpenChange={setShowPermissionDialog}>
-        <DialogContent className="sm:max-w-[550px]">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <Lock className="h-5 w-5" />
-              Request Section Edit Permission
-            </DialogTitle>
-            <DialogDescription>
-              Select which section you want to edit and provide a reason. Admin will review
-              and approve your request.
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4 py-4">
-            <div>
-              <Label htmlFor="section_select">Select Section to Edit *</Label>
-              <Select 
-                value={selectedSection} 
-                onValueChange={(value: any) => {
-                  setSelectedSection(value);
-                  // Auto-fill reason based on selected section
-                  const selectedOption = sectionOptions.find(opt => opt.value === value);
-                  if (selectedOption) {
-                    setPermissionReason(selectedOption.defaultReason);
-                  }
-                }}
-              >
-                <SelectTrigger className="mt-2">
-                  <SelectValue placeholder="Choose a section" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sectionOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      <div className="flex items-center gap-2">
-                        <option.icon className="h-4 w-4" />
-                        <div>
-                          <div className="font-medium">{option.label}</div>
-                          <div className="text-xs text-muted-foreground">
-                            {option.description}
-                          </div>
-                        </div>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div>
-              <Label htmlFor="permission_reason">Reason for Update *</Label>
-              <Textarea
-                id="permission_reason"
-                value={permissionReason}
-                onChange={(e) => setPermissionReason(e.target.value)}
-                placeholder="Reason will be filled automatically when you select a section"
-                rows={4}
-                className="mt-2"
-                disabled={requestingPermission}
-              />
-              <p className="text-sm text-muted-foreground mt-2">
-                ✓ Reason is pre-filled. You can edit if needed or submit directly.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => {
-                setShowPermissionDialog(false);
-                setSelectedSection("");
-                setPermissionReason("");
-              }}
-              disabled={requestingPermission}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={handleRequestPermission}
-              disabled={
-                requestingPermission || !selectedSection || !permissionReason.trim()
-              }
-              className="paybazaar-gradient text-white"
-            >
-              {requestingPermission ? "Submitting..." : "Submit Request"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

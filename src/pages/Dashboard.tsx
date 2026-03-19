@@ -33,7 +33,6 @@ import { Badge } from "@/components/ui/badge";
 interface DecodedToken {
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }
@@ -197,16 +196,10 @@ export default function Dashboard() {
         return;
       }
 
-      if (decoded.user_role !== "retailer") {
-        localStorage.removeItem("authToken");
-        navigate("/login");
-        return;
-      }
-
       setUserInfo({
         id: decoded.user_id,
         name: decoded.user_name,
-        role: decoded.user_role,
+        role: "retailer",
       });
     } catch {
       localStorage.removeItem("authToken");
@@ -508,7 +501,7 @@ export default function Dashboard() {
       <AppSidebar />
 
       <div className="flex-1 flex flex-col min-w-0">
-        <Header userInfo={userInfo} />
+        <Header />
 
         <main className="flex-1 p-6 space-y-6 overflow-auto">
           <div className="paybazaar-gradient rounded-lg p-6 text-white">
@@ -528,7 +521,6 @@ export default function Dashboard() {
                 <ServiceCard
                   key={index}
                   {...service}
-                  onManage={() => console.log(service.title)}
                 />
               ))}
             </div>

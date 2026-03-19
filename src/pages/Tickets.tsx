@@ -53,10 +53,9 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 interface DecodedToken {
-  admin_id: string;
+  admin_id?: string;
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }
@@ -125,7 +124,6 @@ const MyTickets = () => {
 
   const fetchTickets = async () => {
     if (!userId) {
-      toast.error("User ID not found. Please login again.");
       return;
     }
 

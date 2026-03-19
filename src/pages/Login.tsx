@@ -73,11 +73,9 @@ export default function Login() {
         }
       );
 
-      if (response.data.status === "success") {
-        const token = response.data.data?.access_token;
-        if (token) {
-          localStorage.setItem("authToken", token);
-        }
+      if (response.data.token) {
+        const token = response.data.token;
+        localStorage.setItem("authToken", token);
 
         toast({
           title: "Login Successful",

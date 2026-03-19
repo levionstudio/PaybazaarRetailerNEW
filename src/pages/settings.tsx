@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Shield } from "lucide-react";
 import axios from "axios";
-import { jwtDecode, JwtPayload } from "jwt-decode";
+import { jwtDecode } from "jwt-decode";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -28,13 +28,11 @@ const ChangePasswordMpin = () => {
   const [retailerId, setRetailerId] = useState("");
   const [isLoading, setIsLoading] = useState(false);
 
-  // MPIN form state
+  // MPIN form state — API only needs the new MPIN
   const [mpinForm, setMpinForm] = useState({
-    oldMpin: "",
     newMpin: "",
     confirmMpin: "",
   });
-  const [showOldMpin, setShowOldMpin] = useState(false);
   const [showNewMpin, setShowNewMpin] = useState(false);
   const [showConfirmMpin, setShowConfirmMpin] = useState(false);
 
@@ -50,9 +48,8 @@ const ChangePasswordMpin = () => {
     }
 
     try {
-      const decoded: JwtPayload = jwtDecode(token);
-      //@ts-ignore
-      const userId = decoded.retailer_id || decoded.data?.user_id || decoded.user_id;
+      const decoded = jwtDecode<{ user_id: string; exp: number }>(token);
+      const userId = decoded.user_id;
       
       if (!userId) {
         toast({
@@ -87,115 +84,39 @@ const ChangePasswordMpin = () => {
       return;
     }
 
-    // Validation
     if (mpinForm.newMpin !== mpinForm.confirmMpin) {
-      toast({
-        title: "Error",
-        description: "New MPIN and confirm MPIN do not match",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "New MPIN and confirm MPIN do not match", variant: "destructive" });
       return;
     }
 
     if (mpinForm.newMpin.length !== 4 || !/^\d+$/.test(mpinForm.newMpin)) {
-      toast({
-        title: "Error",
-        description: "MPIN must be exactly 4 digits",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (mpinForm.oldMpin.length !== 4 || !/^\d+$/.test(mpinForm.oldMpin)) {
-      toast({
-        title: "Error",
-        description: "Current MPIN must be exactly 4 digits",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    if (mpinForm.oldMpin === mpinForm.newMpin) {
-      toast({
-        title: "Error",
-        description: "New MPIN must be different from current MPIN",
-        variant: "destructive",
-      });
+      toast({ title: "Error", description: "MPIN must be exactly 4 digits", variant: "destructive" });
       return;
     }
 
     setIsLoading(true);
 
     try {
-      // Convert MPIN strings to integers
-      const oldMpinInt = parseInt(mpinForm.oldMpin, 10);
       const newMpinInt = parseInt(mpinForm.newMpin, 10);
 
-      // Validate MPIN range (1000-9999)
-      if (oldMpinInt < 1000 || oldMpinInt > 9999) {
-        toast({
-          title: "Error",
-          description: "Invalid current MPIN format",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      if (newMpinInt < 1000 || newMpinInt > 9999) {
-        toast({
-          title: "Error",
-          description: "Invalid new MPIN format",
-          variant: "destructive",
-        });
-        setIsLoading(false);
-        return;
-      }
-
-      // Call API to update MPIN
-      const response = await axios.put(
-        `${API_BASE_URL}/retailer/update/mpin`,
-        {
-          retailer_id: retailerId,
-          old_mpin: oldMpinInt,
-          new_mpin: newMpinInt,
-        },
+      // PATCH /retailer/update/{retailer_id}/mpin  →  { retailer_mpin: number }
+      const response = await axios.patch(
+        `${API_BASE_URL}/retailer/update/${retailerId}/mpin`,
+        { retailer_mpin: newMpinInt },
         getAuthHeaders()
       );
 
-      if (response.status === 200) {
-        toast({
-          title: "Success",
-          description: "MPIN changed successfully",
-        });
-
-        // Reset form
-        setMpinForm({
-          oldMpin: "",
-          newMpin: "",
-          confirmMpin: "",
-        });
+      if (response.status === 200 || response.data?.message) {
+        toast({ title: "Success", description: "MPIN changed successfully" });
+        setMpinForm({ newMpin: "", confirmMpin: "" });
       }
     } catch (error: any) {
-      console.error("MPIN change error:", error);
-      
       let errorMessage = "Failed to change MPIN. Please try again.";
-      
-      if (error.response?.status === 400) {
-        errorMessage = error.response?.data?.message || "Invalid MPIN provided";
-      } else if (error.response?.status === 401) {
-        errorMessage = "Current MPIN is incorrect";
-      } else if (error.response?.status === 404) {
-        errorMessage = "Retailer not found";
-      } else if (error.response?.data?.message) {
-        errorMessage = error.response.data.message;
-      }
-
-      toast({
-        title: "Error",
-        description: errorMessage,
-        variant: "destructive",
-      });
+      if (error.response?.status === 400) errorMessage = error.response?.data?.message || "Invalid MPIN provided";
+      else if (error.response?.status === 401) errorMessage = "Unauthorized. Please login again.";
+      else if (error.response?.status === 404) errorMessage = "Retailer not found.";
+      else if (error.response?.data?.message) errorMessage = error.response.data.message;
+      toast({ title: "Error", description: errorMessage, variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -224,73 +145,10 @@ const ChangePasswordMpin = () => {
 
               <CardContent className="pt-6 pb-8 px-6">
                 <form onSubmit={handleMpinChange} className="space-y-6">
-                  {/* Old MPIN */}
-                  <div className="space-y-2">
-                    <Label
-                      htmlFor="oldMpin"
-                      className="text-sm font-medium text-foreground"
-                    >
-                      Current MPIN <span className="text-red-500">*</span>
-                    </Label>
-                    <div className="relative">
-                      <Input
-                        id="oldMpin"
-                        type={showOldMpin ? "text" : "password"}
-                        placeholder="••••"
-                        value={mpinForm.oldMpin}
-                        onChange={(e) => {
-                          const value = e.target.value.replace(/\D/g, "");
-                          if (value.length <= 4) {
-                            setMpinForm({
-                              ...mpinForm,
-                              oldMpin: value,
-                            });
-                          }
-                        }}
-                        maxLength={4}
-                        inputMode="numeric"
-                        required
-                        disabled={isLoading}
-                        className="h-12 text-center tracking-[0.5em] text-lg font-semibold pr-10"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowOldMpin(!showOldMpin)}
-                        disabled={isLoading}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
-                      >
-                        {showOldMpin ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
-                      </button>
-                    </div>
-                    {mpinForm.oldMpin.length > 0 && mpinForm.oldMpin.length < 4 && (
-                      <p className="text-xs text-amber-600">
-                        MPIN must be 4 digits ({mpinForm.oldMpin.length}/4)
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Divider */}
-                  <div className="relative">
-                    <div className="absolute inset-0 flex items-center">
-                      <div className="w-full border-t border-border"></div>
-                    </div>
-                    <div className="relative flex justify-center text-xs uppercase">
-                      <span className="bg-background px-2 text-muted-foreground">
-                        New MPIN
-                      </span>
-                    </div>
-                  </div>
 
                   {/* New MPIN */}
                   <div className="space-y-2">
-                    <Label
-                      htmlFor="newMpin"
-                      className="text-sm font-medium text-foreground"
-                    >
+                    <Label htmlFor="newMpin" className="text-sm font-medium text-foreground">
                       New MPIN <span className="text-red-500">*</span>
                     </Label>
                     <div className="relative">
@@ -301,12 +159,7 @@ const ChangePasswordMpin = () => {
                         value={mpinForm.newMpin}
                         onChange={(e) => {
                           const value = e.target.value.replace(/\D/g, "");
-                          if (value.length <= 4) {
-                            setMpinForm({
-                              ...mpinForm,
-                              newMpin: value,
-                            });
-                          }
+                          if (value.length <= 4) setMpinForm({ ...mpinForm, newMpin: value });
                         }}
                         maxLength={4}
                         inputMode="numeric"
@@ -320,17 +173,11 @@ const ChangePasswordMpin = () => {
                         disabled={isLoading}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
                       >
-                        {showNewMpin ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                        {showNewMpin ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
                     </div>
                     {mpinForm.newMpin.length > 0 && mpinForm.newMpin.length < 4 && (
-                      <p className="text-xs text-amber-600">
-                        MPIN must be 4 digits ({mpinForm.newMpin.length}/4)
-                      </p>
+                      <p className="text-xs text-amber-600">MPIN must be 4 digits ({mpinForm.newMpin.length}/4)</p>
                     )}
                   </div>
 
@@ -417,7 +264,6 @@ const ChangePasswordMpin = () => {
                     size="lg"
                     disabled={
                       isLoading ||
-                      mpinForm.oldMpin.length !== 4 ||
                       mpinForm.newMpin.length !== 4 ||
                       mpinForm.confirmMpin.length !== 4 ||
                       mpinForm.newMpin !== mpinForm.confirmMpin

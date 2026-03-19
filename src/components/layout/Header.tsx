@@ -86,18 +86,13 @@ export function Header() {
       try {
         const token = localStorage.getItem("authToken");
 
+      // GET /retailer/get/{retailer_id}/wallet → { balance, message }
       const res = await axios.get(
-  `${import.meta.env.VITE_API_BASE_URL}/wallet/get/balance/retailer/${userId}`,
-  {
-    headers: {
-      Authorization: `Bearer ${token}`,
-    },
-  }
+        `${import.meta.env.VITE_API_BASE_URL}/retailer/get/${userId}/wallet`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
 
-        );
-
-        // ✅ FIXED KEY
-        const balance = res.data?.data?.wallet_balance;
+      const balance = res.data?.balance;
 
         if (typeof balance === "number") {
           setWalletBalance(balance);

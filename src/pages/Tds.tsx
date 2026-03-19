@@ -38,7 +38,6 @@ import { motion } from "framer-motion";
 interface DecodedToken {
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }

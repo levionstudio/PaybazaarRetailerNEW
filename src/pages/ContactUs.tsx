@@ -29,10 +29,9 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 interface DecodedToken {
-  admin_id: string;
+  admin_id?: string;
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }
@@ -78,7 +77,7 @@ const ContactUs = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!adminId || !userId) {
+    if (!userId) {
       toast.error("Authentication required. Please login again.");
       return;
     }

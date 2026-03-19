@@ -45,10 +45,9 @@ import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 
 interface DecodedToken {
-  admin_id: string;
+  admin_id?: string;
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }
@@ -574,7 +573,7 @@ export default function Settlement() {
     try {
       setLoading(true);
       const token = localStorage.getItem("authToken");
-      if (!tokenData?.user_id || !tokenData?.admin_id) {
+      if (!tokenData?.user_id) {
         toast({ title: "⚠️ Session Error", description: "Your session has expired. Please log in again to continue.", variant: "destructive" });
 
       }

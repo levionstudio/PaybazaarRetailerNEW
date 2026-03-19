@@ -41,7 +41,6 @@ import * as XLSX from "xlsx";
 interface DecodedToken {
   user_id: string;
   user_name: string;
-  user_role: string;
   exp: number;
   iat: number;
 }
@@ -138,17 +137,6 @@ const UserWalletTransactions = () => {
       }
 
       // Check if user role is retailer
-      if (decoded.user_role !== "retailer") {
-        localStorage.removeItem("authToken");
-        toast({
-          title: "Access Denied",
-          description: "You don't have permission to access this page.",
-          variant: "destructive",
-        });
-        navigate("/login");
-        return;
-      }
-
       setUserId(decoded.user_id);
     } catch (error) {
       console.error("Token decode error:", error);
