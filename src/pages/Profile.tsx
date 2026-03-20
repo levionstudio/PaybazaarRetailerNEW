@@ -38,7 +38,7 @@ interface DecodedToken {
   exp: number;
 }
 
-const CLOUDFRONT_BASE = "https://d1wq5jtrql22ms.cloudfront.net/";
+const CLOUDFRONT_BASE = import.meta.env.VITE_CLOUDFRONT_URL;
 
 /**
  * Convert an S3 key (stored in DB) to a full CloudFront URL.

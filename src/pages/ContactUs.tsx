@@ -29,7 +29,6 @@ import { toast } from "sonner";
 import { motion } from "framer-motion";
 
 interface DecodedToken {
-  admin_id?: string;
   user_id: string;
   user_name: string;
   exp: number;
@@ -38,8 +37,6 @@ interface DecodedToken {
 
 const ContactUs = () => {
   const navigate = useNavigate();
-  const token = localStorage.getItem("authToken");
-  const [adminId, setAdminId] = useState<string>("");
   const [userId, setUserId] = useState<string>("");
   const [loading, setLoading] = useState(false);
 
@@ -49,23 +46,26 @@ const ContactUs = () => {
   });
 
   useEffect(() => {
-    if (token) {
-      try {
-        const decoded = jwtDecode<DecodedToken>(token);
-        if (decoded.exp * 1000 < Date.now()) {
-          localStorage.removeItem("authToken");
-          toast.error("Session expired. Please login again.");
-          navigate("/login");
-          return;
-        }
-        setAdminId(decoded.admin_id || "");
-        setUserId(decoded.user_id || "");
-      } catch (error) {
-        console.error("Error decoding token:", error);
-        toast.error("Invalid token. Please log in again.");
-      }
+    const token = localStorage.getItem("authToken");
+    if (!token) {
+      toast.error("Authentication required. Please login.");
+      navigate("/login");
+      return;
     }
-  }, [token, navigate]);
+    try {
+      const decoded = jwtDecode<DecodedToken>(token);
+      if (decoded.exp * 1000 < Date.now()) {
+        localStorage.removeItem("authToken");
+        toast.error("Session expired. Please login again.");
+        navigate("/login");
+        return;
+      }
+      setUserId(decoded.user_id || "");
+    } catch (error) {
+      console.error("Error decoding token:", error);
+      toast.error("Invalid token. Please log in again.");
+    }
+  }, [navigate]);
 
   const handleInputChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>
@@ -105,38 +105,50 @@ const ContactUs = () => {
     try {
       setLoading(true);
 
+      // Always read a fresh token at submit time
+      const freshToken = localStorage.getItem("authToken");
+      if (!freshToken) {
+        toast.error("Session expired. Please login again.");
+        navigate("/login");
+        return;
+      }
+
+      // POST /ticket/create — only user_id, ticket_title, ticket_description
       const payload = {
-        admin_id: adminId,
         user_id: userId,
         ticket_title: formData.ticket_title.trim(),
         ticket_description: formData.ticket_description.trim(),
       };
 
+      console.log("Creating ticket with payload:", payload);
 
       const response = await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/ticket/create`,
         payload,
         {
           headers: {
-            Authorization: `Bearer ${token}`,
+            Authorization: `Bearer ${freshToken}`,
             "Content-Type": "application/json",
           },
         }
       );
 
-      if (response.data.status === "success") {
-        toast.success(response.data.message || "Ticket created successfully");
+      console.log("Create ticket response:", response.data);
 
-        // Reset form
-        setFormData({
-          ticket_title: "",
-          ticket_description: "",
-        });
-      }
+      // Accept any 2xx response as success
+      toast.success(
+        response.data?.message || "Ticket created successfully"
+      );
+      setFormData({ ticket_title: "", ticket_description: "" });
     } catch (error: any) {
       console.error("Submit error:", error);
+      console.error("Response data:", error.response?.data);
+      console.error("Response status:", error.response?.status);
       toast.error(
-        error.response?.data?.message || "Failed to create ticket. Please try again."
+        error.response?.data?.message ||
+        error.response?.data?.error ||
+        error.message ||
+        "Failed to create ticket. Please try again."
       );
     } finally {
       setLoading(false);
@@ -179,23 +191,12 @@ const ContactUs = () => {
 
   const containerVariants = {
     hidden: { opacity: 0 },
-    visible: {
-      opacity: 1,
-      transition: {
-        staggerChildren: 0.1,
-      },
-    },
+    visible: { opacity: 1, transition: { staggerChildren: 0.1 } },
   };
 
   const itemVariants = {
     hidden: { opacity: 0, y: 20 },
-    visible: {
-      opacity: 1,
-      y: 0,
-      transition: {
-        duration: 0.5,
-      },
-    },
+    visible: { opacity: 1, y: 0, transition: { duration: 0.5 } },
   };
 
   return (
@@ -281,7 +282,6 @@ const ContactUs = () => {
                       ))}
                     </div>
 
-                    {/* Info Note */}
                     <div className="mt-8 p-4 bg-blue-50 rounded-lg border border-blue-100">
                       <p className="text-sm text-blue-800">
                         <strong>Note:</strong> Our support team typically responds
@@ -304,14 +304,13 @@ const ContactUs = () => {
 
                   <CardContent className="p-6">
                     <form onSubmit={handleSubmit} className="space-y-5">
-                      {/* Ticket Title Field */}
+                      {/* Ticket Title */}
                       <div className="space-y-2">
                         <Label
                           htmlFor="ticket_title"
                           className="text-sm font-medium text-slate-700"
                         >
-                          Ticket Title{" "}
-                          <span className="text-red-500">*</span>
+                          Ticket Title <span className="text-red-500">*</span>
                         </Label>
                         <Input
                           id="ticket_title"
@@ -330,14 +329,13 @@ const ContactUs = () => {
                         </p>
                       </div>
 
-                      {/* Ticket Description Field */}
+                      {/* Ticket Description */}
                       <div className="space-y-2">
                         <Label
                           htmlFor="ticket_description"
                           className="text-sm font-medium text-slate-700"
                         >
-                          Ticket Description{" "}
-                          <span className="text-red-500">*</span>
+                          Ticket Description <span className="text-red-500">*</span>
                         </Label>
                         <Textarea
                           id="ticket_description"
@@ -355,8 +353,6 @@ const ContactUs = () => {
                         </p>
                       </div>
 
-               
-
                       {/* Submit Button */}
                       <Button
                         type="submit"
@@ -367,11 +363,7 @@ const ContactUs = () => {
                           <>
                             <motion.div
                               animate={{ rotate: 360 }}
-                              transition={{
-                                duration: 1,
-                                repeat: Infinity,
-                                ease: "linear",
-                              }}
+                              transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
                               className="mr-2"
                             >
                               <Send className="h-5 w-5" />
@@ -386,7 +378,6 @@ const ContactUs = () => {
                         )}
                       </Button>
 
-                      {/* Privacy Note */}
                       <p className="text-xs text-center text-slate-500">
                         By submitting this form, you agree to our terms of service
                         and privacy policy.
@@ -411,8 +402,7 @@ const ContactUs = () => {
                       Need Immediate Assistance?
                     </h3>
                     <p className="text-sm text-slate-600">
-                      For urgent matters, please call our support hotline during
-                      working hours
+                      For urgent matters, please call our support hotline during working hours
                     </p>
                     <div className="flex flex-wrap justify-center gap-4 pt-2">
                       <Button
@@ -426,9 +416,7 @@ const ContactUs = () => {
                       <Button
                         variant="outline"
                         className="gap-2"
-                        onClick={() =>
-                          window.open("mailto:helpdeskpaybazaar@gmail.com")
-                        }
+                        onClick={() => window.open("mailto:helpdeskpaybazaar@gmail.com")}
                       >
                         <Mail className="h-4 w-4" />
                         Send Email

@@ -25,7 +25,7 @@ import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 
-const CLOUDFRONT_BASE = "https://d1wq5jtrql22ms.cloudfront.net/";
+const CLOUDFRONT_BASE = import.meta.env.VITE_CLOUDFRONT_URL;
 
 interface DocumentState {
   file: File | null;

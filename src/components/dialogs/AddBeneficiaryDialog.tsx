@@ -68,6 +68,7 @@ export function AddBeneficiaryDialog({
     ifsc: "",
     accountNumber: "",
     beneficiaryName: "",
+    beneficiaryPhone: "",
     branchName: "",
   });
 
@@ -88,7 +89,7 @@ export function AddBeneficiaryDialog({
         setLoading(true);
         const token = localStorage.getItem("authToken");
         const response = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}/bank/get/all`,
+          `${import.meta.env.VITE_API_BASE_URL}/bank/all`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -97,9 +98,10 @@ export function AddBeneficiaryDialog({
           }
         );
 
-        if (response.data.status === "success" && response.data.data?.banks) {
+        // API response shape: { banks: [...], message: "banks fetched successfully" }
+        const rawBanks: Bank[] = response.data.banks || [];
+        if (rawBanks.length > 0) {
           // Deduplicate banks by bank_name to avoid React key conflicts and duplicate entries
-          const rawBanks: Bank[] = response.data.data.banks;
           const seen = new Set<string>();
           const uniqueBanks = rawBanks.filter((bank) => {
             const key = bank.bank_name.trim().toLowerCase();
@@ -133,6 +135,7 @@ export function AddBeneficiaryDialog({
         ifsc: "",
         accountNumber: "",
         beneficiaryName: "",
+        beneficiaryPhone: "",
         branchName: "",
       });
       setErrors({});
@@ -201,14 +204,13 @@ export function AddBeneficiaryDialog({
       }
 
       const payload = {
-        retailer_id: retailerId,
-        mobile_number: mobileNumber,
         account_number: formData.accountNumber,
         ifsc_code: formData.ifsc,
       };
 
+      // beneficiary_id is the retailer_id for verification purposes
       const response = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/bene/verify/beneficiaries`,
+        `${import.meta.env.VITE_API_BASE_URL}/beneficiary/verify/${retailerId}`,
         payload,
         {
           headers: {
@@ -313,13 +315,14 @@ export function AddBeneficiaryDialog({
       const payload = {
         mobile_number: mobileNumber,
         bank_name: formData.bank,
-        beneficiary_name: formData.beneficiaryName,
-        account_number: formData.accountNumber,
         ifsc_code: formData.ifsc,
+        account_number: formData.accountNumber,
+        beneficiary_name: formData.beneficiaryName,
+        beneficiary_phone: formData.beneficiaryPhone || mobileNumber,
       };
 
       const response = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/bene/add/beneficiary`,
+        `${import.meta.env.VITE_API_BASE_URL}/beneficiary/create`,
         payload,
         {
           headers: {
@@ -344,6 +347,7 @@ export function AddBeneficiaryDialog({
           ifsc: "",
           accountNumber: "",
           beneficiaryName: "",
+          beneficiaryPhone: "",
           branchName: "",
         });
 
@@ -372,6 +376,7 @@ export function AddBeneficiaryDialog({
       ifsc: "",
       accountNumber: "",
       beneficiaryName: "",
+      beneficiaryPhone: "",
       branchName: "",
     });
     setErrors({});
@@ -441,9 +446,8 @@ export function AddBeneficiaryDialog({
                   {formData.bank || "--Select Bank--"}
                 </span>
                 <ChevronDown
-                  className={`h-4 w-4 opacity-50 transition-transform duration-200 ${
-                    isSelectOpen ? "rotate-180" : ""
-                  }`}
+                  className={`h-4 w-4 opacity-50 transition-transform duration-200 ${isSelectOpen ? "rotate-180" : ""
+                    }`}
                 />
               </Button>
 
@@ -523,11 +527,10 @@ export function AddBeneficiaryDialog({
                           <button
                             key={`${bank.bank_name}-${index}`}
                             type="button"
-                            className={`w-full text-left px-4 py-3 hover:bg-muted transition-colors text-sm border-b border-border last:border-b-0 ${
-                              formData.bank === bank.bank_name
-                                ? "bg-muted font-medium"
-                                : ""
-                            }`}
+                            className={`w-full text-left px-4 py-3 hover:bg-muted transition-colors text-sm border-b border-border last:border-b-0 ${formData.bank === bank.bank_name
+                              ? "bg-muted font-medium"
+                              : ""
+                              }`}
                             onClick={() => {
                               handleBankChange(bank.bank_name);
                               setIsSelectOpen(false);
@@ -663,6 +666,27 @@ export function AddBeneficiaryDialog({
                 Verify account to auto-fill, or enter manually
               </p>
             )}
+          </div>
+
+          {/* Beneficiary Phone */}
+          <div className="space-y-2">
+            <Label htmlFor="beneficiaryPhone" className="text-sm font-medium">
+              Beneficiary Phone
+            </Label>
+            <Input
+              id="beneficiaryPhone"
+              type="text"
+              inputMode="numeric"
+              value={formData.beneficiaryPhone}
+              onChange={(e) =>
+                setFormData({ ...formData, beneficiaryPhone: e.target.value })
+              }
+              placeholder={`Enter beneficiary phone (default: ${mobileNumber || "mobile number"})`}
+              maxLength={10}
+            />
+            <p className="text-xs text-muted-foreground">
+              Leave blank to use the sender's mobile number
+            </p>
           </div>
 
           {/* Action Buttons */}

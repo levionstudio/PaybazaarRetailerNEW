@@ -22,7 +22,7 @@ import {
 import { jwtDecode } from "jwt-decode";
 import axios from "axios";
 
-const CLOUDFRONT_BASE = "https://d1wq5jtrql22ms.cloudfront.net/";
+const CLOUDFRONT_BASE = import.meta.env.VITE_CLOUDFRONT_URL;
 const toCdnUrl = (key: string | null | undefined): string =>
   key ? `${CLOUDFRONT_BASE}${key}` : "";
 
