@@ -23,7 +23,9 @@ import { motion, AnimatePresence } from "framer-motion";
 
 interface DecodedToken {
   user_id: string;
+  user_name: string;
   exp: number;
+  iat: number;
 }
 
 /* ---------------- AUTH HELPER ---------------- */

@@ -15,6 +15,7 @@ import { useState } from "react";
 import { Header } from "@/components/layout/Header";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 
 export default function Services() {
   const navigate = useNavigate();
@@ -136,7 +137,12 @@ export default function Services() {
       <div className="flex-1 flex flex-col">
         <Header />
 
-        <main className="flex-1 overflow-auto">
+        <motion.main 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="flex-1 overflow-auto"
+        >
           {/* HERO SECTION */}
           <div className="paybazaar-gradient p-6 sm:p-8 text-white shadow">
             <div className="max-w-7xl mx-auto">
@@ -243,7 +249,7 @@ export default function Services() {
               )}
             </div>
           </div>
-        </main>
+        </motion.main>
       </div>
     </div>
   );

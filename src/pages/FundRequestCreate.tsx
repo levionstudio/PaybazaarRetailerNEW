@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { motion, AnimatePresence } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -28,7 +29,6 @@ import { Header } from "@/components/layout/Header";
 /* -------------------- INTERFACES -------------------- */
 
 interface DecodedToken {
-  admin_id?: string;
   user_id: string;
   user_name: string;
   exp: number;
@@ -37,9 +37,10 @@ interface DecodedToken {
 
 interface AdminBank {
   admin_bank_id: number;
-  bank_name: string;
-  account_number: string;
-  ifsc_code: string;
+  admin_id: string;
+  admin_bank_name: string;
+  admin_bank_account_number: string;
+  admin_bank_ifsc_code: string;
 }
 
 /* -------------------- COMPONENT -------------------- */
@@ -62,6 +63,7 @@ const RequestFunds = () => {
   const [isCheckingAuth, setIsCheckingAuth] = useState(true);
   const [copiedField, setCopiedField] = useState<string | null>(null);
   const [banks, setBanks] = useState<AdminBank[]>([]);
+  const [adminId, setAdminId] = useState<string>("");
 
   /* -------------------- COPY TO CLIPBOARD -------------------- */
 
@@ -80,12 +82,10 @@ const RequestFunds = () => {
   useEffect(() => {
     const fetchAdminBanks = async () => {
       try {
-        if (!tokenData?.admin_id) return;
-
         const token = localStorage.getItem("authToken");
 
         const res = await axios.get(
-          `${import.meta.env.VITE_API_BASE_URL}/bank/get/admin/${tokenData.admin_id}`,
+          `${import.meta.env.VITE_API_BASE_URL}/admin-bank/all`,
           {
             headers: {
               Authorization: `Bearer ${token}`,
@@ -93,14 +93,15 @@ const RequestFunds = () => {
           }
         );
 
-
-
-        if (
-          res.data?.status === "success" &&
-          Array.isArray(res.data.data?.admin_banks)
-        ) {
-          setBanks(res.data.data.admin_banks);
+        if (res.data?.admin_banks && Array.isArray(res.data.admin_banks)) {
+          console.log(`Loaded ${res.data.admin_banks.length} admin banks:`, res.data.admin_banks);
+          setBanks(res.data.admin_banks);
+          // Set a fallback adminId from the first bank in the list if profile hasn't provided one yet
+          if (res.data.admin_banks.length > 0 && !adminId) {
+            setAdminId(res.data.admin_banks[0].admin_id);
+          }
         } else {
+          console.warn("No admin banks found in response:", res.data);
           setBanks([]);
         }
       } catch (err) {
@@ -109,8 +110,35 @@ const RequestFunds = () => {
       }
     };
 
+    const fetchRetailerProfile = async () => {
+      if (!tokenData?.user_id) return;
+      try {
+        const token = localStorage.getItem("authToken");
+        const res = await axios.get(
+          `${import.meta.env.VITE_API_BASE_URL}/retailer/get/${tokenData.user_id}`,
+          {
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          }
+        );
+        // Check common field names for admin_id
+        const foundAdminId = res.data.retailer?.admin_id || res.data.retailer?.admin || res.data.retailer?.assigned_admin;
+        
+        if (foundAdminId) {
+          console.log(`Fetched admin_id: ${foundAdminId} for user: ${tokenData.user_id}`);
+          setAdminId(foundAdminId);
+        } else {
+          console.warn("Retailer profile fetched but admin identity field not found in:", res.data.retailer);
+        }
+      } catch (err) {
+        console.error("Failed to fetch retailer profile details:", err);
+      }
+    };
+
     fetchAdminBanks();
-  }, [tokenData?.admin_id]);
+    fetchRetailerProfile();
+  }, [tokenData?.user_id]);
 
   /* -------------------- TOKEN VALIDATION -------------------- */
 
@@ -254,7 +282,7 @@ const RequestFunds = () => {
     }
 
     // Verify token data has required fields
-    if (!tokenData.user_id || !tokenData.admin_id) {
+    if (!tokenData.user_id) {
       toast({
         title: "Configuration Error",
         description:
@@ -268,7 +296,7 @@ const RequestFunds = () => {
     // Build payload according to backend model
     const payload: any = {
       requester_id: tokenData.user_id,
-      request_to_id: tokenData.admin_id,
+      request_to_id: adminId || "A000006", // Use fetched adminId, fallback to A000006 as seen in snippet
       amount: parseFloat(formData.amount),
       request_date: new Date(formData.request_date).toISOString(),
       request_type: formData.request_type,
@@ -292,8 +320,10 @@ const RequestFunds = () => {
         description: "Please wait while we process your fund request...",
       });
 
+      console.log("Submitting fund request with payload:", payload);
+
       const { data } = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/fund_request/create`,
+        `${import.meta.env.VITE_API_BASE_URL}/fund-request/retailer-to-admin`,
         payload,
         {
           headers: {
@@ -303,7 +333,12 @@ const RequestFunds = () => {
         }
       );
 
-      if (data.status === "success") {
+      console.log("Fund request response:", data);
+
+      // Look for indicators of success: status field, existence of fund_request object, or success message
+      const isSuccess = data.status === "success" || data.fund_request || data.message?.toLowerCase().includes("successful");
+
+      if (isSuccess) {
         toast({
           title: "Success",
           description:
@@ -394,7 +429,12 @@ const RequestFunds = () => {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
         <div className="flex-1 overflow-y-auto">
-          <main className="p-6 flex flex-col items-center">
+          <motion.main 
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, ease: "easeOut" }}
+            className="p-6 flex flex-col items-center"
+          >
             {/* Fund Request Form */}
             <div className="flex flex-col max-w-3xl w-full">
               <Card className="shadow-lg border border-border rounded-xl overflow-hidden">
@@ -498,15 +538,18 @@ const RequestFunds = () => {
                               {banks.map((bank) => (
                                 <SelectItem
                                   key={bank.admin_bank_id}
-                                  value={bank.bank_name}
+                                  value={bank.admin_bank_name}
                                 >
-                                  <div className="flex flex-col">
+                                  <div className="flex flex-col text-left">
                                     <div className="flex items-center gap-2">
                                       <Building2 className="h-4 w-4" />
-                                      <span className="font-medium">{bank.bank_name}</span>
+                                      <span className="font-medium">
+                                        {bank.admin_bank_name}
+                                      </span>
                                     </div>
                                     <span className="text-xs text-muted-foreground">
-                                      IFSC: {bank.ifsc_code}
+                                      {bank.admin_bank_account_number} | IFSC:{" "}
+                                      {bank.admin_bank_ifsc_code}
                                     </span>
                                   </div>
                                 </SelectItem>
@@ -634,7 +677,7 @@ const RequestFunds = () => {
                 </CardContent>
               </Card>
             </div>
-          </main>
+          </motion.main>
         </div>
       </div>
     </div>

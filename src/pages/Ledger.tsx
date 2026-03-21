@@ -7,6 +7,7 @@ import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
 import { ArrowLeft, Tv, Smartphone, DollarSign, Phone, Zap, IndianRupee } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { motion } from "framer-motion";
 import DTHLedger from "./DTHLedger";
 import MobileRechargeLedger from "./MobileRechargeLedger";
 import SettlementLedger from "./SettlementLedger";
@@ -67,12 +68,16 @@ export default function UserLedger() {
         <AppSidebar />
         <div className="flex-1 flex flex-col min-w-0">
           <Header />
-          <main className="flex-1 flex items-center justify-center">
+          <motion.main 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="flex-1 flex items-center justify-center"
+          >
             <div className="text-center">
               <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
               <p className="text-gray-600">Loading...</p>
             </div>
-          </main>
+          </motion.main>
         </div>
       </div>
     );
@@ -85,7 +90,12 @@ export default function UserLedger() {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
 
-        <main className="flex-1 p-6 space-y-6 overflow-auto">
+        <motion.main 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="flex-1 p-6 space-y-6 overflow-auto"
+        >
           {/* Header Section */}
           <div className="paybazaar-gradient rounded-lg p-6 text-white shadow-lg">
             <div className="flex items-center gap-4">
@@ -203,7 +213,7 @@ export default function UserLedger() {
               <ElectricityBillLedger userId={tokenData.user_id} />
             </TabsContent>
           </Tabs>
-        </main>
+        </motion.main>
       </div>
     </div>
   );

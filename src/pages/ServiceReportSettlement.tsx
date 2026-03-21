@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 import { Button } from "@/components/ui/button";
+import { motion } from "framer-motion";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -46,14 +47,11 @@ import * as XLSX from "xlsx";
 import html2canvas from "html2canvas";
 import jsPDF from "jspdf";
 
-interface TokenData {
+interface DecodedToken {
   user_id: string;
-  user_unique_id: string;
   user_name: string;
-  admin_id: string;
-  distributor_id: string;
-  master_distributor_id: string;
   exp: number;
+  iat: number;
 }
 
 // ✅ CORRECTED: Matches Go backend GetRetailerPayoutTransactionsResponseModel
@@ -91,7 +89,7 @@ export default function ServiceReportSettlement() {
     return new Date().toISOString().split("T")[0];
   };
 
-  const [tokenData, setTokenData] = useState<TokenData | null>(null);
+  const [tokenData, setTokenData] = useState<DecodedToken | null>(null);
   const [allTransactions, setAllTransactions] = useState<Transaction[]>([]); // All fetched data
   const [filteredTransactions, setFilteredTransactions] = useState<Transaction[]>([]); // After filters
   const [loading, setLoading] = useState(false);
@@ -126,7 +124,7 @@ export default function ServiceReportSettlement() {
     }
 
     try {
-      const decoded: TokenData = jwtDecode(token);
+      const decoded: DecodedToken = jwtDecode(token);
       if (!decoded?.exp || decoded.exp * 1000 < Date.now()) {
         toast({
           title: "Session expired",
@@ -942,7 +940,12 @@ export default function ServiceReportSettlement() {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
 
-        <main className="flex-1 p-6 space-y-6 overflow-auto">
+        <motion.main 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+          className="flex-1 p-6 space-y-6 overflow-auto"
+        >
           {/* Header Section */}
           <div className="paybazaar-gradient rounded-lg p-6 text-white shadow-lg">
             <div className="flex items-center justify-between">
@@ -1351,7 +1354,7 @@ export default function ServiceReportSettlement() {
               </div>
             )}
           </div>
-        </main>
+        </motion.main>
       </div>
 
       {/* Receipt Dialog */}

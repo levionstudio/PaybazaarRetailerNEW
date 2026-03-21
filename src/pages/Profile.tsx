@@ -35,7 +35,9 @@ import { motion } from "framer-motion";
 
 interface DecodedToken {
   user_id: string;
+  user_name: string;
   exp: number;
+  iat: number;
 }
 
 const CLOUDFRONT_BASE = import.meta.env.VITE_CLOUDFRONT_URL;

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -102,6 +103,7 @@ const UserWalletTransactions = () => {
   // Pagination
   const [currentPage, setCurrentPage] = useState(1);
   const [entriesPerPage, setEntriesPerPage] = useState(10);
+  const [totalRecords, setTotalRecords] = useState(0);
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
@@ -308,23 +310,23 @@ const UserWalletTransactions = () => {
     setLoading(true);
 
     try {
-      // Build query params - remove search, we'll filter client-side
+      // Build query params for server-side pagination
       const params = new URLSearchParams({
-        limit: "10000", // Fetch large number to get all data
-        offset: "0",
+        limit: entriesPerPage.toString(),
+        offset: ((currentPage - 1) * entriesPerPage).toString(),
       });
 
-      // Always send date filters (required for proper filtering)
+      // Always send date filters
       if (startDate) {
-        params.append("start_date", `${startDate}T00:00:00`);
+        params.append("start_date", startDate);
       }
 
       if (endDate) {
-        params.append("end_date", `${endDate}T23:59:59`);
+        params.append("end_date", endDate);
       }
 
       const res = await axios.get(
-        import.meta.env.VITE_API_BASE_URL + `/wallet/get/transaction/retailer/${userId}?${params.toString()}`,
+        import.meta.env.VITE_API_BASE_URL + `/wallet-transaction/user/${userId}?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
@@ -332,8 +334,23 @@ const UserWalletTransactions = () => {
         }
       );
 
-      if (res.data.status === "success") {
-        const raw: WalletTransactionRaw[] = res.data?.data?.transactions || [];
+      const body = res.data;
+      let raw: WalletTransactionRaw[] = [];
+
+      if (body.status === "success" || res.status === 200) {
+        if (Array.isArray(body?.data?.transactions)) {
+          raw = body.data.transactions;
+        } else if (Array.isArray(body?.transactions)) {
+          raw = body.transactions;
+        } else if (Array.isArray(body?.data)) {
+          raw = body.data;
+        } else if (Array.isArray(body)) {
+          raw = body;
+        }
+
+        // Handle total records for pagination
+        const total = body?.data?.total ?? body?.total ?? raw.length;
+        setTotalRecords(total);
 
         const mapped: WalletTransaction[] = raw.map((tx) => {
           const isCredit = !!tx.credit_amount;
@@ -353,6 +370,7 @@ const UserWalletTransactions = () => {
         setAllTransactions(mapped);
       } else {
         setAllTransactions([]);
+        setTotalRecords(0);
       }
     } catch (error: any) {
       console.error("Error fetching wallet transactions:", error);
@@ -362,6 +380,7 @@ const UserWalletTransactions = () => {
         variant: "destructive",
       });
       setAllTransactions([]);
+      setTotalRecords(0);
     } finally {
       setLoading(false);
     }
@@ -371,16 +390,20 @@ const UserWalletTransactions = () => {
   useEffect(() => {
     const filtered = applyFilters(allTransactions);
     setFilteredTransactions(filtered);
-    setCurrentPage(1); // Reset to first page when filters change
   }, [allTransactions, searchTerm, statusFilter, startDate, endDate]);
 
-  // Fetch when dates change
+  // Reset to first page when filters or search term changes
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, startDate, endDate]);
+
+  // Fetch when dates, page, or limit changes
   useEffect(() => {
     if (userId && validateDates()) {
       fetchTransactions();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userId, startDate, endDate]);
+  }, [userId, startDate, endDate, currentPage, entriesPerPage]);
 
   /* -------------------- CLEAR FILTERS -------------------- */
 
@@ -516,11 +539,12 @@ const UserWalletTransactions = () => {
 
   /* -------------------- PAGINATION -------------------- */
 
-  const totalCount = filteredTransactions.length;
+  const totalCount = totalRecords;
   const totalPages = Math.ceil(totalCount / entriesPerPage);
   const startIndex = (currentPage - 1) * entriesPerPage;
-  const endIndex = Math.min(startIndex + entriesPerPage, totalCount);
-  const paginatedTransactions = filteredTransactions.slice(startIndex, endIndex);
+  // Use filteredTransactions.length for the end index calculation to reflect current page content
+  const endIndex = Math.min(startIndex + filteredTransactions.length, totalCount);
+  const paginatedTransactions = filteredTransactions;
 
   /* -------------------- RENDER -------------------- */
 
@@ -541,7 +565,12 @@ const UserWalletTransactions = () => {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
 
-        <main className="flex-1 overflow-auto bg-muted/20">
+        <motion.main 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.4 }}
+          className="flex-1 overflow-auto bg-muted/20"
+        >
           {/* Header Section */}
           <div className="paybazaar-gradient text-white p-6">
             <div className="flex items-center justify-between">
@@ -939,7 +968,7 @@ const UserWalletTransactions = () => {
               )}
             </div>
           </div>
-        </main>
+        </motion.main>
       </div>
     </div>
   );

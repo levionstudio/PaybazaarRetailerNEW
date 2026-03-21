@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { motion } from "framer-motion";
 
 import { Header } from "@/components/layout/Header";
 import { AppSidebar } from "@/components/layout/AppSidebar";
@@ -503,7 +504,12 @@ export default function Dashboard() {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
 
-        <main className="flex-1 p-6 space-y-6 overflow-auto">
+        <motion.main 
+          initial={{ opacity: 0, y: 15 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
+          className="flex-1 p-6 space-y-6 overflow-auto"
+        >
           <div className="paybazaar-gradient rounded-lg p-6 text-white">
             <h1 className="text-2xl font-bold">
               Welcome back, {userInfo?.name}!
@@ -578,7 +584,7 @@ export default function Dashboard() {
             </div>
           )}
 
-        </main>
+        </motion.main>
       </div>
     </div>
   );

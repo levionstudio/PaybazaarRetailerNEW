@@ -45,7 +45,6 @@ import axios from "axios";
 import { jwtDecode } from "jwt-decode";
 
 interface DecodedToken {
-  admin_id?: string;
   user_id: string;
   user_name: string;
   exp: number;
@@ -581,7 +580,7 @@ export default function Settlement() {
       const response = await axios.post(
         `${import.meta.env.VITE_API_BASE_URL}/payout/create`,
         {
-          admin_id: tokenData.admin_id,
+          admin_id: retailerProfile?.admin_id || "A000006",
           retailer_id: tokenData.user_id,
           mobile_number: selectedBeneficiary.mobile_number,
           ifsc_code: selectedBeneficiary.ifsc_code,

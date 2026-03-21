@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Home,
   ChevronDown,
@@ -197,7 +198,9 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton asChild isActive={active}>
-                        <a
+                        <motion.a
+                          whileHover={{ x: 4 }}
+                          whileTap={{ scale: 0.98 }}
                           href={item.href}
                           className={`flex items-center rounded-lg transition-all ${isCollapsed
                               ? "justify-center px-2 py-2"
@@ -206,7 +209,7 @@ export function AppSidebar() {
                         >
                           <Icon className={iconClass} />
                           {!isCollapsed && <span>{item.title}</span>}
-                        </a>
+                        </motion.a>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
@@ -225,7 +228,9 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton asChild isActive={active}>
-                        <a
+                        <motion.a
+                          whileHover={{ x: 4 }}
+                          whileTap={{ scale: 0.98 }}
                           href={item.href}
                           className={`flex items-center rounded-lg transition-all ${isCollapsed
                               ? "justify-center px-2 py-2"
@@ -234,7 +239,7 @@ export function AppSidebar() {
                         >
                           <Icon className={iconClass} />
                           {!isCollapsed && <span>{item.title}</span>}
-                        </a>
+                        </motion.a>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
@@ -283,29 +288,42 @@ export function AppSidebar() {
                     )}
                   </CollapsibleTrigger>
 
-                  <CollapsibleContent className="mt-1 space-y-1">
-                    {/* Add Fund */}
-                    <a
-                      href="/funds-request"
-                      className={`flex items-center px-3 py-2 pl-11 rounded-lg text-sm transition-all ${pathname === "/funds-request"
-                          ? "bg-sidebar-accent text-sidebar-foreground border border-white"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
-                        }`}
-                    >
-                      Add Fund
-                    </a>
-
-                    {/* Fund Requests */}
-                    <a
-                      href="/funds"
-                      className={`flex items-center px-3 py-2 pl-11 rounded-lg text-sm transition-all ${pathname === "/funds"
-                          ? "bg-sidebar-accent text-sidebar-foreground border border-white"
-                          : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
-                        }`}
-                    >
-                      Fund Requests
-                    </a>
-                  </CollapsibleContent>
+                  <AnimatePresence>
+                    {fundOpen && (
+                      <CollapsibleContent forceMount className="mt-1 space-y-1">
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                        >
+                          {/* Add Fund */}
+                          <motion.a
+                            whileHover={{ x: 4 }}
+                            href="/funds-request"
+                            className={`flex items-center px-3 py-2 pl-11 rounded-lg text-sm transition-all ${pathname === "/funds-request"
+                                ? "bg-sidebar-accent text-sidebar-foreground border border-white"
+                                : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
+                              }`}
+                          >
+                            Add Fund
+                          </motion.a>
+ 
+                          {/* Fund Requests */}
+                          <motion.a
+                            whileHover={{ x: 4 }}
+                            href="/funds"
+                            className={`flex items-center px-3 py-2 pl-11 rounded-lg text-sm transition-all ${pathname === "/funds"
+                                ? "bg-sidebar-accent text-sidebar-foreground border border-white"
+                                : "text-sidebar-foreground/80 hover:bg-sidebar-accent/50"
+                              }`}
+                          >
+                            Fund Requests
+                          </motion.a>
+                        </motion.div>
+                      </CollapsibleContent>
+                    )}
+                  </AnimatePresence>
                 </Collapsible>
               )}
             </SidebarGroupContent>
@@ -402,7 +420,9 @@ export function AppSidebar() {
                   return (
                     <SidebarMenuItem key={item.href}>
                       <SidebarMenuButton asChild isActive={active}>
-                        <a
+                        <motion.a
+                          whileHover={{ x: 4 }}
+                          whileTap={{ scale: 0.98 }}
                           href={item.href}
                           className={`flex items-center rounded-lg transition-all ${isCollapsed
                               ? "justify-center px-2 py-2"
@@ -411,7 +431,7 @@ export function AppSidebar() {
                         >
                           <Icon className={iconClass} />
                           {!isCollapsed && <span>{item.title}</span>}
-                        </a>
+                        </motion.a>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   );
@@ -424,20 +444,22 @@ export function AppSidebar() {
           <SidebarGroup>
             <SidebarGroupContent>
               <SidebarMenu>
-                <SidebarMenuItem>
-                  <SidebarMenuButton asChild>
-                    <button
-                      onClick={handleLogout}
-                      className={`flex w-full items-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-all ${isCollapsed
-                          ? "justify-center px-2 py-2"
-                          : "gap-3 px-3 py-2"
-                        }`}
-                    >
-                      <LogOut className={iconClass} />
-                      {!isCollapsed && <span>Logout</span>}
-                    </button>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton asChild>
+                      <motion.button
+                        whileHover={{ x: 4 }}
+                        whileTap={{ scale: 0.98 }}
+                        onClick={handleLogout}
+                        className={`flex w-full items-center rounded-lg text-sidebar-foreground hover:bg-sidebar-accent transition-all ${isCollapsed
+                            ? "justify-center px-2 py-2"
+                            : "gap-3 px-3 py-2"
+                          }`}
+                      >
+                        <LogOut className={iconClass} />
+                        {!isCollapsed && <span>Logout</span>}
+                      </motion.button>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
               </SidebarMenu>
             </SidebarGroupContent>
           </SidebarGroup>

@@ -9,6 +9,14 @@ import { useToast } from "@/hooks/use-toast";
 import { Eye, EyeOff, Shield } from "lucide-react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { motion } from "framer-motion";
+ 
+ interface DecodedToken {
+   user_id: string;
+   user_name: string;
+   exp: number;
+   iat: number;
+ }
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
@@ -48,7 +56,7 @@ const ChangePasswordMpin = () => {
     }
 
     try {
-      const decoded = jwtDecode<{ user_id: string; exp: number }>(token);
+      const decoded = jwtDecode<DecodedToken>(token);
       const userId = decoded.user_id;
       
       if (!userId) {
@@ -129,7 +137,12 @@ const ChangePasswordMpin = () => {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
 
-        <div className="flex-1 p-6 overflow-y-auto">
+        <motion.div 
+          initial={{ opacity: 0, x: -20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4 }}
+          className="flex-1 p-6 overflow-y-auto"
+        >
           <div className="max-w-2xl mx-auto space-y-8">
             {/* MPIN Change Card */}
             <Card className="shadow-lg border-border/50">
@@ -302,7 +315,7 @@ const ChangePasswordMpin = () => {
               </CardContent>
             </Card>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );

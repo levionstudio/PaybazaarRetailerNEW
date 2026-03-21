@@ -20,9 +20,8 @@ import DmtPage from "./pages/Dmt";
 import ChangePassword from "./pages/ChangePassword";
 import ContactUs from "./pages/ContactUs";
 import MyCommission from "./pages/Commission";
-import RequestFunds from "./pages/fundRequest";
-import GetFundRequests from "./pages/requestedFund";
-import UserWalletTransactions from "./pages/accounthistory";
+import RequestFunds from "./pages/FundRequestCreate";
+import UserWalletTransactions from "./pages/WalletTransactions";
 import Settlement from "./pages/settlement";
 import ChangePasswordMpin from "./pages/settings";
 import ServicesReport from "./pages/ServiceReport";
@@ -42,6 +41,7 @@ import PostpaidMobileRechargeReport from "./pages/ServiceReportMobilePostpaid";
 import BBPSReports from "./pages/ReportsofBBPS";
 import ElectricityBillPayment from "./pages/ElectricityBBPS";
 import ElectricityBillReport from "./pages/ServiceReportBBPSElectricity";
+import GetFundRequests from "./pages/FundRequestGETALL";
 
 const queryClient = new QueryClient();
 
@@ -59,7 +59,7 @@ const App = () => (
               <Route path="/register" element={<Register />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/profile" element={<Profile />} />
-              <Route path="/funds-request" element={<RequestFunds/>} />
+              <Route path="/funds-request" element={<RequestFunds />} />
               <Route path="/profile/update" element={<ProfileUpdate />} />
               <Route path="/services" element={<Services />} />
               <Route path="/service/report" element={<ServicesReport />} />
@@ -75,7 +75,7 @@ const App = () => (
               <Route path="/service/bbps/all" element={<BBPSReports />} />
               <Route path="/mobilerechargepostpaid" element={<MobileRechargePostpaid />} />
               <Route path="/service/postpaidrecharge/report" element={<PostpaidMobileRechargeReport />} />
-              
+
               <Route path="/dthrecharge" element={<DTHRecharge />} />
               <Route path="/service/recharge/all" element={<RechargeReports />} />
               <Route path="/service/recharge/report" element={<MobileRechargeReport />} />
@@ -83,20 +83,20 @@ const App = () => (
               <Route path="/aeps" element={<AePS />} />
               <Route path="/aeps2" element={<AepsKyc />} />
               <Route path="/digikatha" element={<DigiKatha />} />
-              <Route path="/dmt" element={<DmtPage/>} />
+              <Route path="/dmt" element={<DmtPage />} />
               <Route path="/change-password" element={<ChangePassword />} />
               <Route path="/contact-us" element={<ContactUs />} />
               <Route path="/commission" element={<MyCommission />} />
               <Route path="/funds" element={<GetFundRequests />} />
               <Route path="/transactions" element={<UserWalletTransactions />} />
               <Route path="/settlement" element={<Settlement />} />
-              
+
               {/* User Ledger - Combined DTH, Mobile Recharge, and Settlement Tabs */}
               <Route path="/reports" element={<UserLedger />} />
-              
+
               <Route path="/tds-commissions" element={<TDSCommissionPage />} />
               <Route path="/settings" element={<ChangePasswordMpin />} />
-              
+
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>

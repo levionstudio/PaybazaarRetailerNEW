@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import axios from "axios";
 import { jwtDecode } from "jwt-decode";
+import { motion, AnimatePresence } from "framer-motion";
 import { AppSidebar } from "@/components/layout/AppSidebar";
 import { Header } from "@/components/layout/Header";
 import { useToast } from "@/hooks/use-toast";
@@ -256,7 +257,7 @@ const GetFundRequests = () => {
   const handleStartDateChange = (value: string) => {
     setStartDate(value);
     setDateError("");
-    
+
     // If end date exists and new start date is after it, clear end date
     if (value && endDate) {
       const start = new Date(value);
@@ -270,7 +271,7 @@ const GetFundRequests = () => {
   const handleEndDateChange = (value: string) => {
     setEndDate(value);
     setDateError("");
-    
+
     // If start date exists and new end date is before it, clear start date
     if (value && startDate) {
       const start = new Date(startDate);
@@ -294,52 +295,59 @@ const GetFundRequests = () => {
     try {
       setLoading(true);
 
-      // Build payload according to GetFundRequestFilterRequestModel
-      const payload: any = {
-        id: userId, // Required field
-      };
+      // Pagination parameters
+      const limit = entriesPerPage;
+      const offset = (currentPage - 1) * entriesPerPage;
 
-      // Add optional filters
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append("limit", limit.toString());
+      params.append("offset", offset.toString());
+
       if (startDate) {
-        payload.start_date = new Date(`${startDate}T00:00:00`).toISOString();
+        params.append("start_date", startDate);
       }
       if (endDate) {
-        payload.end_date = new Date(`${endDate}T23:59:59`).toISOString();
-      }
-      if (statusFilter && statusFilter !== "") {
-        payload.status = statusFilter;
+        params.append("end_date", endDate);
       }
 
-      const { data } = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/fund_request/get/requester`,
-        payload,
-        {
-          headers: {
-            Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
-          },
-        }
-      );
+      const finalUrl = `${import.meta.env.VITE_API_BASE_URL}/fund-request/requester/${userId}?${params.toString()}`;
+      console.log("Fetching fund requests from URL:", finalUrl);
 
-      if (data.status === "success") {
-        const raw: FundRequestRaw[] = data.data?.fund_requests || [];
+      const { data } = await axios.get(finalUrl, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
 
-        // Client-side search filtering (since backend doesn't have search parameter)
-        let filtered = raw;
-        if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
-          const searchLower = debouncedSearchTerm.toLowerCase().trim();
-          filtered = raw.filter((req) => 
-            (req.utr_number && req.utr_number.toLowerCase().includes(searchLower)) ||
-            (req.bank_name && req.bank_name.toLowerCase().includes(searchLower)) ||
-            req.remarks.toLowerCase().includes(searchLower) ||
-            (req.admin_remarks && req.admin_remarks.toLowerCase().includes(searchLower)) ||
-            req.request_status.toLowerCase().includes(searchLower) ||
-            req.amount.toString().includes(searchLower) ||
-            req.request_type.toLowerCase().includes(searchLower)
+      console.log("Fund requests list response:", data);
+
+      if (data.status === "success" || data.fund_requests) {
+        const raw: FundRequestRaw[] = data.fund_requests || data.data?.fund_requests || [];
+
+        // Client-side filtering (Status and Search only)
+        let processed = raw;
+
+        if (statusFilter && statusFilter !== "") {
+          processed = processed.filter(
+            (req) => req.request_status.toUpperCase() === statusFilter.toUpperCase()
           );
         }
 
-        const mapped: FundRequest[] = filtered.map((req) => ({
+        if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
+          const searchLower = debouncedSearchTerm.toLowerCase().trim();
+          processed = processed.filter((req) => 
+            (req.utr_number && req.utr_number.toLowerCase().includes(searchLower)) ||
+            (req.bank_name && req.bank_name.toLowerCase().includes(searchLower)) ||
+            (req.remarks && req.remarks.toLowerCase().includes(searchLower)) ||
+            (req.admin_remarks && req.admin_remarks.toLowerCase().includes(searchLower)) ||
+            (req.request_status && req.request_status.toLowerCase().includes(searchLower)) ||
+            req.amount.toString().includes(searchLower) ||
+            (req.request_type && req.request_type.toLowerCase().includes(searchLower))
+          );
+        }
+
+        const mapped: FundRequest[] = processed.map((req) => ({
           id: req.fund_request_id,
           requesterId: req.requester_id,
           requestToId: req.request_to_id,
@@ -356,13 +364,10 @@ const GetFundRequests = () => {
           updatedAt: req.updated_at,
         }));
 
-        // Client-side pagination
-        const startIndex = (currentPage - 1) * entriesPerPage;
-        const endIndex = startIndex + entriesPerPage;
-        const paginatedData = mapped.slice(startIndex, endIndex);
+        setFundRequests(mapped);
 
-        setFundRequests(paginatedData);
-        setTotalRecords(mapped.length);
+        // If backend returns total records, use it. Otherwise use the length for now.
+        setTotalRecords(data.total_count || data.total || (mapped.length > 0 ? mapped.length + offset : 0));
       } else {
         setFundRequests([]);
         setTotalRecords(0);
@@ -401,10 +406,10 @@ const GetFundRequests = () => {
     setCurrentPage(1);
   };
 
-  const hasActiveFilters = 
-    searchTerm || 
-    statusFilter || 
-    startDate !== getTodayDate() || 
+  const hasActiveFilters =
+    searchTerm ||
+    statusFilter ||
+    startDate !== getTodayDate() ||
     endDate !== getTodayDate();
 
   /* -------------------- EXPORT TO EXCEL -------------------- */
@@ -434,38 +439,39 @@ const GetFundRequests = () => {
       const token = localStorage.getItem("authToken");
       if (!token) return;
 
-      // Build payload with same filters
-      const payload: any = {
-        id: userId,
-      };
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append("limit", "10000"); // Fetch a large batch for export
+      params.append("offset", "0");
 
       if (startDate) {
-        payload.start_date = new Date(`${startDate}T00:00:00`).toISOString();
+        params.append("start_date", startDate);
       }
       if (endDate) {
-        payload.end_date = new Date(`${endDate}T23:59:59`).toISOString();
-      }
-      if (statusFilter && statusFilter !== "") {
-        payload.status = statusFilter;
+        params.append("end_date", endDate);
       }
 
-      const { data } = await axios.post(
-        `${import.meta.env.VITE_API_BASE_URL}/fund_request/get/requester`,
-        payload,
+      const { data } = await axios.get(
+        `${import.meta.env.VITE_API_BASE_URL}/fund-request/requester/${userId}?${params.toString()}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
-            "Content-Type": "application/json",
           },
         }
       );
 
-      let allData: FundRequestRaw[] = data.data?.fund_requests || [];
+      let allData: FundRequestRaw[] = data.fund_requests || data.data?.fund_requests || [];
 
-      // Apply search filtering if present
+      // Apply search/status filtering if present
+      if (statusFilter && statusFilter !== "") {
+        allData = allData.filter(
+          (req) => req.request_status.toUpperCase() === statusFilter.toUpperCase()
+        );
+      }
+
       if (debouncedSearchTerm && debouncedSearchTerm.trim()) {
         const searchLower = debouncedSearchTerm.toLowerCase().trim();
-        allData = allData.filter((req) => 
+        allData = allData.filter((req) =>
           (req.utr_number && req.utr_number.toLowerCase().includes(searchLower)) ||
           (req.bank_name && req.bank_name.toLowerCase().includes(searchLower)) ||
           req.remarks.toLowerCase().includes(searchLower) ||
@@ -515,16 +521,14 @@ const GetFundRequests = () => {
         { wch: 12 }, // Status
       ];
 
-      const fileName = `Fund_Requests_${
-        new Date().toISOString().split("T")[0]
-      }.xlsx`;
+      const fileName = `Fund_Requests_${new Date().toISOString().split("T")[0]
+        }.xlsx`;
       XLSX.writeFile(workbook, fileName);
 
       toast({
         title: "Success",
-        description: `Exported ${allData.length} fund request${
-          allData.length > 1 ? "s" : ""
-        }`,
+        description: `Exported ${allData.length} fund request${allData.length > 1 ? "s" : ""
+          }`,
       });
     } catch (error) {
       console.error("Export error:", error);
@@ -599,32 +603,32 @@ const GetFundRequests = () => {
     }
   };
 
-const getRequestTypeBadge = (type: string) => {
-  const label = getRequestTypeLabel(type);
+  const getRequestTypeBadge = (type: string) => {
+    const label = getRequestTypeLabel(type);
 
-  switch (type?.toUpperCase()) {
-    case "NORMAL":
-      return (
-        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-300">
-          {label}
-        </span>
-      );
+    switch (type?.toUpperCase()) {
+      case "NORMAL":
+        return (
+          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-blue-100 text-blue-700 border border-blue-300">
+            {label}
+          </span>
+        );
 
-    case "ADVANCE":
-      return (
-        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-300">
-          {label}
-        </span>
-      );
+      case "ADVANCE":
+        return (
+          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-purple-100 text-purple-700 border border-purple-300">
+            {label}
+          </span>
+        );
 
-    default:
-      return (
-        <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-300">
-          {label}
-        </span>
-      );
-  }
-};
+      default:
+        return (
+          <span className="px-3 py-1 rounded-full text-xs font-semibold bg-gray-100 text-gray-700 border border-gray-300">
+            {label}
+          </span>
+        );
+    }
+  };
 
 
   /* -------------------- PAGINATION -------------------- */
@@ -652,7 +656,12 @@ const getRequestTypeBadge = (type: string) => {
       <div className="flex-1 flex flex-col min-w-0">
         <Header />
 
-        <main className="flex-1 overflow-auto bg-muted/20">
+        <motion.main 
+          initial={{ opacity: 0, x: 20 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, ease: "easeOut" }}
+          className="flex-1 overflow-auto bg-muted/20"
+        >
           {/* Header Section */}
           <div className="paybazaar-gradient text-white p-6">
             <div className="flex items-center justify-between">
@@ -679,9 +688,8 @@ const getRequestTypeBadge = (type: string) => {
                   disabled={loading || isExporting || fundRequests.length === 0}
                 >
                   <FileSpreadsheet
-                    className={`h-4 w-4 mr-2 ${
-                      isExporting ? "animate-pulse" : ""
-                    }`}
+                    className={`h-4 w-4 mr-2 ${isExporting ? "animate-pulse" : ""
+                      }`}
                   />
                   {isExporting ? "Exporting..." : "Export to Excel"}
                 </Button>
@@ -965,9 +973,8 @@ const getRequestTypeBadge = (type: string) => {
                       {fundRequests.map((request, idx) => (
                         <TableRow
                           key={request.id}
-                          className={`border-b hover:bg-gray-50 ${
-                            idx % 2 === 0 ? "bg-white" : "bg-gray-50/60"
-                          }`}
+                          className={`border-b hover:bg-gray-50 ${idx % 2 === 0 ? "bg-white" : "bg-gray-50/60"
+                            }`}
                         >
                           <TableCell className="py-3 px-4 text-center text-sm text-gray-900 whitespace-nowrap">
                             {(currentPage - 1) * entriesPerPage + idx + 1}
@@ -1073,7 +1080,7 @@ const getRequestTypeBadge = (type: string) => {
               )}
             </div>
           </div>
-        </main>
+        </motion.main>
       </div>
     </div>
   );
