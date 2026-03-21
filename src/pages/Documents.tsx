@@ -35,11 +35,6 @@ interface DocumentState {
   existingUrl: string | null;
 }
 
-interface LogEntry {
-  msg: string;
-  type: "info" | "success" | "error";
-  time: string;
-}
 
 const initDoc = (): DocumentState => ({
   file: null,
@@ -69,14 +64,6 @@ const MyDocuments = () => {
   const [pan, setPan] = useState<DocumentState>(initDoc());
   const [profileImg, setProfileImg] = useState<DocumentState>(initDoc());
 
-  // Process log state — shown below the cards
-  const [logs, setLogs] = useState<LogEntry[]>([]);
-  const [activeDoc, setActiveDoc] = useState<string | null>(null); // which doc is being uploaded
-
-  const addLog = (msg: string, type: "info" | "success" | "error" = "info") => {
-    const time = new Date().toLocaleTimeString("en-IN", { hour12: false });
-    setLogs((prev) => [...prev, { msg, type, time }]);
-  };
 
   // ── Decode token & fetch existing images ──
   useEffect(() => {
@@ -160,16 +147,12 @@ const MyDocuments = () => {
       return;
     }
 
-    // Clear logs and mark which doc is uploading
-    setLogs([]);
-    setActiveDoc(docLabel);
     setter((p) => ({ ...p, uploading: true }));
 
     try {
       // ── STEP 1: Get presigned URL from backend ──
       // Backend: saves path "documents/{id}/{id}_aadhar_{ts}.png" to DB
       //          returns { url: "https://s3.amazonaws.com/...?X-Amz-..." }
-      addLog(`[1/3] Requesting presigned upload URL for ${docLabel}...`, "info");
 
       const presignRes = await axios.patch(
         `${import.meta.env.VITE_API_BASE_URL}/retailer/update/${retailerId}/${endpoint}`,
@@ -182,34 +165,24 @@ const MyDocuments = () => {
         throw new Error("Backend did not return a presigned URL. Check the endpoint.");
       }
 
-      addLog(`[1/3] ✓ Presigned URL received from server.`, "success");
 
       // ── STEP 2: Upload file directly to S3 using presigned URL ──
       // Must use PUT (not POST), Content-Type must match file type
       // No Authorization header — the presigned URL already encodes auth
-      addLog(`[2/3] Uploading ${docState.file.name} (${(docState.file.size / 1024).toFixed(1)} KB) to S3...`, "info");
 
       await axios.put(presignedUrl, docState.file, {
         headers: {
           "Content-Type": docState.file.type,
           // ⚠ Do NOT send Authorization here — S3 presigned URLs don't want it
         },
-        onUploadProgress: (progressEvent) => {
-          const pct = Math.round((progressEvent.loaded * 100) / (progressEvent.total ?? 1));
-          if (pct === 25 || pct === 50 || pct === 75 || pct === 100) {
-            addLog(`[2/3] Upload progress: ${pct}%`, "info");
-          }
-        },
       });
 
-      addLog(`[2/3] ✓ File uploaded to S3 successfully.`, "success");
 
       // ── STEP 3: Build CloudFront URL ──
       // The S3 presigned URL format:
       //   https://{bucket}.s3.{region}.amazonaws.com/{key}?X-Amz-...
       // We extract the path after the bucket host to get the key,
       // then serve it via CloudFront.
-      addLog(`[3/3] Building CloudFront URL for the uploaded document...`, "info");
 
       // Extract S3 key from presigned URL
       // e.g. "https://bucket.s3.ap-south-1.amazonaws.com/documents/R001/R001_aadhar_1234567890.png?..."
@@ -221,8 +194,6 @@ const MyDocuments = () => {
         : s3UrlObj.pathname;               // "documents/R001/R001_aadhar_1234567890.png"
 
       const cloudFrontUrl = `${CLOUDFRONT_BASE}${s3Key}`;
-      addLog(`[3/3] ✓ Document available at CloudFront CDN.`, "success");
-      addLog(`Done! ${docLabel} has been updated successfully.`, "success");
 
       // Update state — show new image immediately
       setter((p) => ({
@@ -244,10 +215,9 @@ const MyDocuments = () => {
         error.message ||
         "Unknown error occurred";
 
-      addLog(`✗ Upload failed: ${errMsg}`, "error");
       toast({ title: "Upload Failed", description: errMsg, variant: "destructive" });
     } finally {
-      // Keep activeDoc set so logs remain visible
+      // Done
     }
   };
 
@@ -442,55 +412,6 @@ const MyDocuments = () => {
                 />
               </div>
 
-              {/* Upload Process Log — shown when uploading or after upload */}
-              {logs.length > 0 && (
-                <Card className="border-gray-200">
-                  <CardHeader className="bg-gray-50 border-b px-6 py-4">
-                    <CardTitle className="flex items-center gap-2 text-sm font-bold text-gray-900">
-                      <div className="flex h-8 w-8 items-center justify-center rounded-full bg-blue-100">
-                        <Info className="h-4 w-4 text-blue-600" />
-                      </div>
-                      Upload Process Log
-                      {activeDoc && <span className="text-gray-500 font-normal ml-1">— {activeDoc}</span>}
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-0">
-                    <div className="divide-y divide-gray-100">
-                      {logs.map((log, i) => (
-                        <div key={i} className={`flex items-start gap-3 px-6 py-3 text-sm ${log.type === "success" ? "bg-green-50/40" :
-                            log.type === "error" ? "bg-red-50/40" :
-                              "bg-white"
-                          }`}>
-                          <span className="text-xs text-gray-400 font-mono whitespace-nowrap mt-0.5 min-w-[60px]">
-                            {log.time}
-                          </span>
-                          {log.type === "success" ? (
-                            <CheckCircle className="h-4 w-4 text-green-600 mt-0.5 flex-shrink-0" />
-                          ) : log.type === "error" ? (
-                            <AlertCircle className="h-4 w-4 text-red-600 mt-0.5 flex-shrink-0" />
-                          ) : (
-                            <Info className="h-4 w-4 text-blue-500 mt-0.5 flex-shrink-0" />
-                          )}
-                          <span className={
-                            log.type === "success" ? "text-green-800" :
-                              log.type === "error" ? "text-red-800" :
-                                "text-gray-700"
-                          }>
-                            {log.msg}
-                          </span>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Clear logs button */}
-                    <div className="px-6 py-3 border-t bg-gray-50">
-                      <Button variant="ghost" size="sm" className="text-xs text-gray-500" onClick={() => { setLogs([]); setActiveDoc(null); }}>
-                        Clear Log
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
 
               {/* Document Requirements */}
               <Card className="border-gray-200">
